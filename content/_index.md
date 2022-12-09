@@ -80,7 +80,7 @@ sections:
           date_end: ''
           date_start: '2022-08-30'
           description: ''
-          organization: NASA’s Applied Remote Sensing Training (ARSET)
+          organization: NASA - Applied Remote Sensing Training (ARSET)
           organization_url: https://appliedsciences.nasa.gov/what-we-do/capacity-building/arset
           title: ARSET - Evaluating Ecosystem Services with Remote Sensing
           url: 'https://appliedsciences.nasa.gov/join-mission/training/english/arset-evaluating-ecosystem-services-remote-sensing'
@@ -88,7 +88,7 @@ sections:
           date_end: ''
           date_start: '2022-08-11'
           description: ''
-          organization: NASA’s Applied Remote Sensing Training (ARSET)
+          organization: NASA - Applied Remote Sensing Training (ARSET)
           organization_url: https://appliedsciences.nasa.gov/what-we-do/capacity-building/arset
           title: ARSET - Satellite Remote Sensing for Measuring Urban Heat Islands and Constructing Heat Vulnerability Indices
           url: 'https://appliedsciences.nasa.gov/join-mission/training/english/arset-satellite-remote-sensing-measuring-urban-heat-islands-and'
