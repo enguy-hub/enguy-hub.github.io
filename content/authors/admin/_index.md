@@ -1,7 +1,7 @@
 ---
 title: Hien Nguyen
 role: Junior AI/Software Engineer
-avatar_filename: profile.jpeg
+avatar_filename: profile.png
 bio: ""
 interests:
   - Earth Observation
