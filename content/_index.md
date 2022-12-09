@@ -42,18 +42,20 @@ sections:
         - title: Junior AI/Software Engineer
           company: Bayerische Landesanstalt für Wald und Forstwirtschaft
           company_url: 'https://www.lwf.bayern.de/biodiversitaet/wildtiermonitoring_jagd/index.php'
+          company_logo: lwf-sv
           location: Munich, DE
           date_start: '2020-03-01'
           date_end: ''
         - title: Master Thesis Candidate
           company: FloodAdapt VN @ German Aerospace Center (DLR)
           company_url: 'https://floodadapt.eoc.dlr.de/'
-          company_logo: org-x
+          company_logo: dlr-sv
           location: Wessling, DE
           date_start: '2022-05-01'
           date_end: '2022-12-30'
         - title: Student Research Asssitant
           company: Professur für Urbane Produktive Ökosysteme @ Technical University of Munich
+          company_logo: tum-sv          
           company_url: 'https://upe-lab.de/'
           location: Freising, DE
           date_start: '2021-05-01'
