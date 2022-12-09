@@ -7,13 +7,13 @@ type: landing
 sections:
   - block: hero
     content:
-      title: Hien Nguyen
+      title: Welcome to HiEN's Personal Website
       cta:
         label: '**Get Started**'
         url: https://wowchemy.com/templates/
       text: |-
 
-        **Welcome to HiEN's Personal Website!**
+        **Wochemy was used to build this page!**
 
         <!--Custom spacing-->
         <!--<div class="mb-3"></div>-->
