@@ -61,27 +61,26 @@ sections:
       #   Leave `date_end` empty if it's your current employer.
       #   Begin multi-line descriptions with YAML's `|2-` multi-line prefix.
       items:
-        - title: CEO
+        - title: Student
           company: GenCoin
           company_url: ''
           company_logo: org-gc
-          location: California
+          location: Munich
           date_start: '2021-01-01'
           date_end: ''
           description: |2-
               Responsibilities include:
-
               * Analysing
               * Modelling
               * Deploying
-        - title: Professor of Semiconductor Physics
+        - title: Student
           company: University X
           company_url: ''
           company_logo: org-x
-          location: California
+          location: Munich
           date_start: '2016-01-01'
           date_end: '2020-12-31'
-          description: Taught electronic engineering and researched semiconductor physics.
+          description: Studying hard.
     design:
       columns: '2'
   - block: accomplishments
@@ -197,7 +196,6 @@ sections:
       title: Contact
       subtitle:
       text: |-
-        Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nam mi diam, venenatis ut magna et, vehicula efficitur enim.
       # Contact (add or remove contact options as necessary)
       email: hien.nguyen@tum.de
       address:
@@ -208,16 +206,6 @@ sections:
         country_code: DE
       office_hours:
         - 'Weekdays 08:00 to 17:00'
-      # Automatically link email and phone or display as text?
-      autolink: true
-      # Email form provider
-      form:
-        provider: netlify
-        formspree:
-          id:
-        netlify:
-          # Enable CAPTCHA challenge to reduce spam?
-          captcha: false
     design:
       columns: '2'
 ---
