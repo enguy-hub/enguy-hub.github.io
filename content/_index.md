@@ -62,22 +62,22 @@ sections:
           company_url: 'https://www.lwf.bayern.de/biodiversitaet/wildtiermonitoring_jagd/index.php'
           company_logo: org-gc
           location: Munich, DE
-          date_start: '2020-03'
+          date_start: '2020-03-01'
           date_end: ''
         - title: Master Thesis Candidate @ FloodAdaptVN
           company: German Aerospace Center (DLR)
           company_url: 'https://www.dlr.de/eoc/en/desktopdefault.aspx/tabid-11927/20992_read-64483/'
           company_logo: org-x
           location: Wessling, DE
-          date_start: '2022-05'
-          date_end: '2022-12'
+          date_start: '2022-05-01'
+          date_end: '2022-12-30'
         - title: Student Research Asssitant @ Professur für Urbane Produktive Ökosysteme
           company: Technical University of Munich
           company_url: 'https://upe-lab.de/'
           company_logo: org-x
           location: Freising, DE
-          date_start: '2021-05'
-          date_end: '2022-09' 
+          date_start: '2021-05-01'
+          date_end: '2022-09-30' 
     design:
       columns: '2'
   
@@ -112,7 +112,7 @@ sections:
           url: 'https://appliedsciences.nasa.gov/join-mission/training/english/arset-satellite-remote-sensing-measuring-urban-heat-islands-and'
         - certificate_url: https://drive.google.com/file/d/1_egDrNGp1GvczxOQeXSgMwXTxk1PlFJK/view
           date_end: ''
-          date_start: '2022-09'
+          date_start: '2022-09-30'
           description: ''
           organization: ESA - EO College
           organization_url: https://eo-college.org/
@@ -120,7 +120,7 @@ sections:
           url: 'https://eo-college.org/courses/forest-monitoring/'
         - certificate_url: https://drive.google.com/file/d/1W7K--YAk46SVf-YHqAwSK054yZUYQMRs/view
           date_end: ''
-          date_start: '2022-09'
+          date_start: '2022-09-10'
           description: ''
           organization: ESA - EO College
           organization_url: https://eo-college.org/
@@ -211,7 +211,7 @@ sections:
       email: hien.nguyen@tum.de
       address:
         city: Munich
-        region: Bayern
+        region: Germany
         postcode: '85354'
         country: Germany
         country_code: DE
