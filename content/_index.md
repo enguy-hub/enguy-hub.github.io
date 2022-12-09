@@ -5,21 +5,6 @@ date: 2022-10-24
 type: landing
 
 sections:
-  - block: hero
-    content:
-      title: Welcome to HiEN's website
-      cta:
-        label: '**Get Started**'
-        url: https://wowchemy.com/templates/
-      text: |-
-        <!--GitHub Button JS-->
-        <script async defer src="https://buttons.github.io/buttons.js"></script>
-    design:
-      background:
-        gradient_end: '#1976d2'
-        gradient_start: '#004ba0'
-        text_color_light: true
-        
   - block: about.avatar
     id: about
     content:
