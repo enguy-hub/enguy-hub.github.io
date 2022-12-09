@@ -60,6 +60,7 @@ sections:
         - title: Junior AI/Software Engineer
           company: Bayerische Landesanstalt für Wald und Forstwirtschaft
           company_url: 'https://www.lwf.bayern.de/biodiversitaet/wildtiermonitoring_jagd/index.php'
+          company_logo: org-x
           location: Munich, DE
           date_start: '2020-03-01'
           date_end: ''
