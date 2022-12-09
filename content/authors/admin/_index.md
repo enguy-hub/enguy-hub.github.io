@@ -1,6 +1,7 @@
 ---
 title: Hien Nguyen
 role: Junior AI/Software Engineer
+avatar_filename: 117321024_959516971229348_6088230441326586749_n1.jpg
 bio: ""
 interests:
   - Earth Observation
@@ -20,8 +21,8 @@ social:
     icon_pack: fab
     link: https://www.linkedin.com/in/hien-n-20ab20a5/
 organizations:
-  - name: Stanford University
-    url: https://www.stanford.edu/
+  - name: Technical University of Munich
+    url: https://www.tum.de/
 education:
   courses:
     - course: "MSc. Earth Observation for Resource Management "
