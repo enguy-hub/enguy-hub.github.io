@@ -181,8 +181,8 @@ sections:
           - publication
         exclude_featured: true
     design:
-      columns: '3'
-      view: citation
+      columns: '2'
+      view: cards
   
   - block: contact
     id: contact
