@@ -1,7 +1,7 @@
 ---
 title: Hien Nguyen
 role: Junior AI/Software Engineer
-avatar_filename: 117321024_959516971229348_6088230441326586749_n1.jpg
+avatar_filename: profile.jpeg
 bio: ""
 interests:
   - Earth Observation
@@ -34,9 +34,9 @@ education:
 superuser: true
 status:
   icon: ☕️
-last_name: Wu
+last_name: Nguyen
 highlight_name: true
-first_name: Alice
+first_name: Hien
 email: ""
 ---
 {style="text-align: justify;"}
