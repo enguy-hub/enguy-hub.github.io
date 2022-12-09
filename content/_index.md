@@ -79,7 +79,7 @@ sections:
           date_start: '2021-05'
           date_end: '2022-09' 
     design:
-      columns: '3'
+      columns: '2'
   
   - block: accomplishments
     content:
