@@ -19,6 +19,7 @@ sections:
         gradient_end: '#1976d2'
         gradient_start: '#004ba0'
         text_color_light: true
+  
   - block: about.avatar
     id: about
     content:
@@ -26,6 +27,7 @@ sections:
       username: admin
       # Override your bio text from `authors/admin/_index.md`?
       text:
+  
   - block: features
     content:
       title: Skills
@@ -42,6 +44,7 @@ sections:
           description: 10%
           icon: camera-retro
           icon_pack: fas
+  
   - block: experience
     content:
       title: Experience
@@ -76,6 +79,7 @@ sections:
           description: Studying hard.
     design:
       columns: '2'
+  
   - block: accomplishments
     content:
       # Note: `&shy;` is used to add a 'soft' hyphen in a long heading.
@@ -115,6 +119,7 @@ sections:
           url: ''
     design:
       columns: '2'
+  
   - block: collection
     id: posts
     content:
@@ -142,6 +147,7 @@ sections:
       # Choose a layout view
       view: compact
       columns: '2'
+  
   - block: portfolio
     id: projects
     content:
@@ -169,8 +175,9 @@ sections:
       view: showcase
       # For Showcase view, flip alternate rows?
       flip_alt_rows: false
+  
   - block: collection
-    id: publications
+    id: publication
     content:
       title: Recent Publications
       text: |-
@@ -184,6 +191,7 @@ sections:
     design:
       columns: '2'
       view: citation
+  
   - block: contact
     id: contact
     content:
