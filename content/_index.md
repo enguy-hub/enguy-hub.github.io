@@ -12,7 +12,6 @@ sections:
         label: '**Get Started**'
         url: https://wowchemy.com/templates/
       text: |-
-
         <!--GitHub Button JS-->
         <script async defer src="https://buttons.github.io/buttons.js"></script>
     design:
@@ -171,7 +170,7 @@ sections:
       # For Showcase view, flip alternate rows?
       flip_alt_rows: false
   - block: collection
-    id: featured
+    id: publications
     content:
       title: Recent Publications
       text: |-
