@@ -5,7 +5,7 @@ date: 2022-10-24
 type: landing
 
 sections:
-  - block: hero
+  - block: features
     content:
       title: Welcome to HiEN's website
       cta:
@@ -32,18 +32,18 @@ sections:
     content:
       title: Skills
       items:
-        - name: R
+        - name: Python
           description: 90%
+          icon: python
+          icon_pack: fab
+        - name: Geospatial Analysis
+          description: 100%
+          icon: satellite
+          icon_pack: fab
+        - name: R
+          description: 10%
           icon: r-project
           icon_pack: fab
-        - name: Statistics
-          description: 100%
-          icon: chart-line
-          icon_pack: fas
-        - name: Photography
-          description: 10%
-          icon: camera-retro
-          icon_pack: fas
   
   - block: experience
     content:
