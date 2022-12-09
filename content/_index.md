@@ -49,8 +49,8 @@ sections:
           date_start: '2020-03-01'
           date_end: ''
         - title: Master Thesis Candidate
-          company: German Aerospace Center (DLR)
-          company_url: 'https://www.dlr.de/eoc/en/desktopdefault.aspx/tabid-11927/20992_read-64483/'
+          company: FloodAdapt VN @ German Aerospace Center (DLR)
+          company_url: 'https://floodadapt.eoc.dlr.de/'
           company_logo: org-x
           location: Wessling, DE
           date_start: '2022-05-01'
