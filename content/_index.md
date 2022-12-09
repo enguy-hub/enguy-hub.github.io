@@ -5,7 +5,7 @@ date: 2022-10-24
 type: landing
 
 sections:
-  - block: features
+  - block: hero
     content:
       title: Welcome to HiEN's website
       cta:
