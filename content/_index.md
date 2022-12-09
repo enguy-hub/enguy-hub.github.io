@@ -33,15 +33,15 @@ sections:
       title: Skills
       items:
         - name: Python
-          description: 90%
+          description: 60%
           icon: python
           icon_pack: fab
         - name: Geospatial Analysis
-          description: 100%
+          description: 60%
           icon: satellite
-          icon_pack: fab
+          icon_pack: fas
         - name: R
-          description: 10%
+          description: 60%
           icon: r-project
           icon_pack: fab
   
@@ -57,28 +57,29 @@ sections:
       #   Leave `date_end` empty if it's your current employer.
       #   Begin multi-line descriptions with YAML's `|2-` multi-line prefix.
       items:
-        - title: Student
-          company: GenCoin
-          company_url: ''
+        - title: Junior AI/Software Engineer
+          company: Bayerische Landesanstalt für Wald und Forstwirtschaft
+          company_url: '[Department: Biodiversity, conservation and wildlife management](https://www.lwf.bayern.de/biodiversitaet/wildtiermonitoring_jagd/index.php')
           company_logo: org-gc
-          location: Munich
-          date_start: '2021-01-01'
+          location: Munich, DE
+          date_start: '2020-03'
           date_end: ''
-          description: |2-
-              Responsibilities include:
-              * Analysing
-              * Modelling
-              * Deploying
-        - title: Student
-          company: University X
-          company_url: ''
+        - title: Master Thesis Candidate @ FloodAdaptVN
+          company: German Aerospace Center (DLR)
+          company_url: '[Team: Coasts and River Basins](https://www.dlr.de/eoc/en/desktopdefault.aspx/tabid-11927/20992_read-64483/)'
           company_logo: org-x
-          location: Munich
-          date_start: '2016-01-01'
-          date_end: '2020-12-31'
-          description: Studying hard.
+          location: Wessling, DE
+          date_start: '2022-05'
+          date_end: '2022-12'
+        - title: Student Research Asssitant @ Professur für Urbane Produktive Ökosysteme
+          company: Technical University of Munich
+          company_url: '[UPE Lab](https://upe-lab.de/')
+          company_logo: org-x
+          location: Freising, DE
+          date_start: '2021-05'
+          date_end: '2022-09' 
     design:
-      columns: '2'
+      columns: '3'
   
   - block: accomplishments
     content:
