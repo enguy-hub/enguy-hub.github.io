@@ -218,4 +218,3 @@ sections:
       office_hours:
         - 'Weekdays 08:00 to 17:00'
 ---
-{style="text-align: justify;"}
