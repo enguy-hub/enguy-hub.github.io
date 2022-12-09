@@ -59,7 +59,7 @@ sections:
       items:
         - title: Junior AI/Software Engineer
           company: Bayerische Landesanstalt für Wald und Forstwirtschaft
-          company_url: '[Department: Biodiversity, conservation and wildlife management](https://www.lwf.bayern.de/biodiversitaet/wildtiermonitoring_jagd/index.php')
+          company_url: '[Department: Biodiversity, conservation and wildlife management](https://www.lwf.bayern.de/biodiversitaet/wildtiermonitoring_jagd/index.php)'
           company_logo: org-gc
           location: Munich, DE
           date_start: '2020-03'
@@ -73,7 +73,7 @@ sections:
           date_end: '2022-12'
         - title: Student Research Asssitant @ Professur für Urbane Produktive Ökosysteme
           company: Technical University of Munich
-          company_url: '[UPE Lab](https://upe-lab.de/')
+          company_url: '[UPE Lab](https://upe-lab.de/)'
           company_logo: org-x
           location: Freising, DE
           date_start: '2021-05'
