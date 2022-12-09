@@ -1,5 +1,5 @@
 ---
-title: Github Projects
+title: Example Projects
 summary: An example of using the in-built project page.
 tags:
   - Deep Learning
