@@ -198,7 +198,5 @@ sections:
         postcode: ''
         country: Germany
         country_code: DE
-      office_hours:
-        - 'Weekdays 08:00 to 17:00'
 ---
 {style="text-align: justify;"}
