@@ -13,7 +13,7 @@ publication_types:
   - "1"
 authors:
   - admin
-  - Robert Ford
+  - Hien Nguyen
 author_notes:
   - Equal contribution
   - Equal contribution
