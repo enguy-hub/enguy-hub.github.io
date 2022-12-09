@@ -195,7 +195,7 @@ sections:
       address:
         city: Munich
         region: Germany
-        postcode: '85354'
+        postcode: ''
         country: Germany
         country_code: DE
       office_hours:
