@@ -206,6 +206,4 @@ sections:
         country_code: DE
       office_hours:
         - 'Weekdays 08:00 to 17:00'
-    design:
-      columns: '2'
 ---
