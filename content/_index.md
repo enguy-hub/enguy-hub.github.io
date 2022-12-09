@@ -182,7 +182,7 @@ sections:
         exclude_featured: true
     design:
       columns: '2'
-      view: cards
+      view: citation
   
   - block: contact
     id: contact
