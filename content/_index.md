@@ -8,8 +8,6 @@ sections:
   - block: hero
     content:
       title: Hien Nguyen
-      image:
-        filename: logo_200x200-light-removebg-preview.png
       cta:
         label: '**Get Started**'
         url: https://wowchemy.com/templates/
@@ -18,7 +16,7 @@ sections:
         **Welcome to HiEN's Personal Website!**
 
         <!--Custom spacing-->
-        <div class="mb-3"></div>
+        <!--<div class="mb-3"></div>-->
         <!--GitHub Button JS-->
         <script async defer src="https://buttons.github.io/buttons.js"></script>
     design:
