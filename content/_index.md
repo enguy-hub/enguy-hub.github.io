@@ -9,7 +9,7 @@ sections:
     content:
       title: Hien Nguyen
       image:
-        filename: logo-light.png
+        filename: logo_200x200-light-removebg-preview.png
       cta:
         label: '**Get Started**'
         url: https://wowchemy.com/templates/
