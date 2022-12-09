@@ -178,7 +178,8 @@ sections:
       filters:
         folders:
           - publication
-        featured_only: true
+        # featured_only: true
+        # exclude_featured: true
     design:
       columns: '2'
       view: citation
