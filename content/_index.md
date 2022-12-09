@@ -94,30 +94,38 @@ sections:
       #   Leave other parameters empty if not required.
       #   Begin multi-line descriptions with YAML's `|2-` multi-line prefix.
       items:
-        - certificate_url: https://www.coursera.org
+        - certificate_url: https://drive.google.com/file/d/1PF5C0zHvzEPChSL-LaVRDVQEUDjlKyWJ/view
           date_end: ''
-          date_start: '2021-01-25'
+          date_start: '2022-08-30'
           description: ''
-          organization: Coursera
-          organization_url: https://www.coursera.org
-          title: Neural Networks and Deep Learning
-          url: ''
-        - certificate_url: https://www.edx.org
+          organization: NASA’s Applied Remote Sensing Training (ARSET)
+          organization_url: https://appliedsciences.nasa.gov/what-we-do/capacity-building/arset
+          title: ARSET - Evaluating Ecosystem Services with Remote Sensing
+          url: 'https://appliedsciences.nasa.gov/join-mission/training/english/arset-evaluating-ecosystem-services-remote-sensing'
+        - certificate_url: https://drive.google.com/file/d/1SOzrgP4Aq7uK7CMEDVbQVVFBrxCiefoe/view
           date_end: ''
-          date_start: '2021-01-01'
-          description: Formulated informed blockchain models, hypotheses, and use cases.
-          organization: edX
-          organization_url: https://www.edx.org
-          title: Blockchain Fundamentals
-          url: https://www.edx.org/professional-certificate/uc-berkeleyx-blockchain-fundamentals
-        - certificate_url: https://www.datacamp.com
-          date_end: '2020-12-21'
-          date_start: '2020-07-01'
+          date_start: '2022-08-11'
           description: ''
-          organization: DataCamp
-          organization_url: https://www.datacamp.com
-          title: 'Object-Oriented Programming in R'
-          url: ''
+          organization: NASA’s Applied Remote Sensing Training (ARSET)
+          organization_url: https://appliedsciences.nasa.gov/what-we-do/capacity-building/arset
+          title: ARSET - Satellite Remote Sensing for Measuring Urban Heat Islands and Constructing Heat Vulnerability Indices
+          url: 'https://appliedsciences.nasa.gov/join-mission/training/english/arset-satellite-remote-sensing-measuring-urban-heat-islands-and'
+        - certificate_url: https://drive.google.com/file/d/1_egDrNGp1GvczxOQeXSgMwXTxk1PlFJK/view
+          date_end: ''
+          date_start: '2022-09'
+          description: ''
+          organization: ESA - EO College
+          organization_url: https://eo-college.org/
+          title: 'Land in Focus – Forest Ecosystems'
+          url: 'https://eo-college.org/courses/forest-monitoring/'
+        - certificate_url: https://drive.google.com/file/d/1W7K--YAk46SVf-YHqAwSK054yZUYQMRs/view
+          date_end: ''
+          date_start: '2022-09'
+          description: ''
+          organization: ESA - EO College
+          organization_url: https://eo-college.org/
+          title: 'Land in Focus – Agriculture & Food'
+          url: 'https://eo-college.org/courses/agriculture-and-food/'
     design:
       columns: '2'
   
