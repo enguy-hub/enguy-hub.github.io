@@ -18,15 +18,12 @@ sections:
       title: Skills
       items:
         - name: Geospatial Analysis
-          description: 80%
           icon: satellite
           icon_pack: fas
         - name: Python
-          description: 80%
           icon: python
           icon_pack: fab
         - name: R
-          description: 75%
           icon: r-project
           icon_pack: fab
   
