@@ -7,7 +7,7 @@ type: landing
 sections:
   - block: hero
     content:
-      title: Welcome to HiEN's Personal Website
+      title: Welcome to HiEN's website
       cta:
         label: '**Get Started**'
         url: https://wowchemy.com/templates/
