@@ -181,7 +181,7 @@ sections:
           - publication
         exclude_featured: true
     design:
-      columns: '2'
+      columns: '3'
       view: citation
   
   - block: contact
