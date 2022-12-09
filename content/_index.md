@@ -48,15 +48,15 @@ sections:
           location: Munich, DE
           date_start: '2020-03-01'
           date_end: ''
-        - title: Master Thesis Candidate @ FloodAdaptVN
+        - title: Master Thesis Candidate
           company: German Aerospace Center (DLR)
           company_url: 'https://www.dlr.de/eoc/en/desktopdefault.aspx/tabid-11927/20992_read-64483/'
           company_logo: org-x
           location: Wessling, DE
           date_start: '2022-05-01'
           date_end: '2022-12-30'
-        - title: Student Research Asssitant @ Professur für Urbane Produktive Ökosysteme
-          company: Technical University of Munich
+        - title: Student Research Asssitant
+          company: Professur für Urbane Produktive Ökosysteme @ Technical University of Munich
           company_url: 'https://upe-lab.de/'
           location: Freising, DE
           date_start: '2021-05-01'
