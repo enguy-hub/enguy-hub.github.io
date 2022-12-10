@@ -43,7 +43,7 @@ sections:
       #   Begin multi-line descriptions with YAML's `|2-` multi-line prefix.
       items:
         - title: Junior AI/Software Engineer
-          company: Bayerische Landesanstalt für Wald und Forstwirtschaft
+          company: Bavarian State Institute of Forestry
           company_url: 'https://www.lwf.bayern.de/biodiversitaet/wildtiermonitoring_jagd/index.php'
           company_logo: lwf-sv
           location: Munich, DE
@@ -57,7 +57,7 @@ sections:
           date_start: '2022-05-01'
           date_end: '2022-12-30'
         - title: Student Research Asssitant
-          company: Professur für Urbane Produktive Ökosysteme @ Technical University of Munich
+          company: Urbane Productive Ecosystems @ Technical University of Munich
           company_logo: tum-sv          
           company_url: 'https://upe-lab.de/'
           location: Freising, DE
