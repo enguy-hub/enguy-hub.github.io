@@ -82,35 +82,51 @@ sections:
         - certificate_url: https://drive.google.com/file/d/1PF5C0zHvzEPChSL-LaVRDVQEUDjlKyWJ/view
           date_end: ''
           date_start: '2022-08-30'
-          description: ''
-          organization: NASA - Applied Remote Sensing Training (ARSET)
+          description: 'Applied Remote Sensing Training (ARSET)'
+          organization: NASA
           organization_url: https://appliedsciences.nasa.gov/what-we-do/capacity-building/arset
           title: ARSET - Evaluating Ecosystem Services with Remote Sensing
           url: 'https://appliedsciences.nasa.gov/join-mission/training/english/arset-evaluating-ecosystem-services-remote-sensing'
         - certificate_url: https://drive.google.com/file/d/1SOzrgP4Aq7uK7CMEDVbQVVFBrxCiefoe/view
           date_end: ''
           date_start: '2022-08-11'
-          description: ''
-          organization: NASA - Applied Remote Sensing Training (ARSET)
+          description: 'Applied Remote Sensing Training (ARSET)'
+          organization: NASA
           organization_url: https://appliedsciences.nasa.gov/what-we-do/capacity-building/arset
           title: ARSET - Satellite Remote Sensing for Measuring Urban Heat Islands and Constructing Heat Vulnerability Indices
           url: 'https://appliedsciences.nasa.gov/join-mission/training/english/arset-satellite-remote-sensing-measuring-urban-heat-islands-and'
         - certificate_url: https://drive.google.com/file/d/1_egDrNGp1GvczxOQeXSgMwXTxk1PlFJK/view
           date_end: ''
           date_start: '2022-09-30'
-          description: ''
-          organization: ESA - EO College
+          description: 'EO College'
+          organization: ESA
           organization_url: https://eo-college.org/
           title: 'Land in Focus – Forest Ecosystems'
           url: 'https://eo-college.org/courses/forest-monitoring/'
         - certificate_url: https://drive.google.com/file/d/1W7K--YAk46SVf-YHqAwSK054yZUYQMRs/view
           date_end: ''
           date_start: '2022-09-10'
-          description: ''
-          organization: ESA - EO College
+          description: 'EO College'
+          organization: ESA
           organization_url: https://eo-college.org/
           title: 'Land in Focus – Agriculture & Food'
           url: 'https://eo-college.org/courses/agriculture-and-food/'
+        - certificate_url: https://www.coursera.org/account/accomplishments/specialization/certificate/CBV8QASRBAUR
+          date_end: ''
+          date_start: '2020-06-18'
+          description: ''
+          organization: Coursera
+          organization_url: https://www.coursera.org/
+          title: 'DeepLearning.AI TensorFlow Developer'
+          url: 'https://www.coursera.org/account/accomplishments/professional-cert/CBV8QASRBAUR'
+        - certificate_url: https://www.coursera.org/account/accomplishments/specialization/certificate/EK9VQG4JZ654
+          date_end: ''
+          date_start: '2020-06-19'
+          description: ''
+          organization: Coursera
+          organization_url: https://www.coursera.org/
+          title: 'IT Fundamentals for Cybersecurity'
+          url: 'https://www.coursera.org/account/accomplishments/specialization/EK9VQG4JZ654'      
     design:
       columns: '2'
   
