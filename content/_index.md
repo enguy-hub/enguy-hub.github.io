@@ -12,8 +12,8 @@ sections:
       username: admin
     design:
       background:
-        gradient_end: '#1976d2'
         gradient_start: '#004ba0'
+        gradient_end: '#F0F5FA'
         text_color_light: true
   
   - block: features
