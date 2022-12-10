@@ -18,8 +18,8 @@ role: Junior AI/Software Engineer
 
 # Organizations/Affiliations to show in About widget
 organizations:
-  - name: Technical University of Munich
-    url: https://www.tum.de/
+  - name: Bavarian State Institute of Forestry
+    url: https://www.lwf.bayern.de/biodiversitaet/wildtiermonitoring_jagd/index.php
 
 # Short bio (displayed in user profile at end of posts)
 bio: My research interests include earth observation analysis for forestry and agriculture applications 
