@@ -1,6 +1,6 @@
 ---
 # Display name
-title: Hi !! I am enguy-hub (Hien Nguyen)
+title: Hi 👋 ! I am enguy-hub (Hien Nguyen)
 
 # Is this the primary user of the site?
 superuser: true
@@ -34,7 +34,7 @@ social:
   - icon: github
     icon_pack: fab
     link: https://github.com/enguy-hub
-  - icon: linked
+  - icon: linkedin
     icon_pack: fab
     link: https://www.linkedin.com/in/hien-n-20ab20a5/
 
