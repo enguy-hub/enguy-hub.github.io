@@ -18,8 +18,8 @@ marketing:
     site_type: Person
     local_business_type: ''
     org_name: ''
-    description: 'A highly-customizable Hugo minimal theme powered by Wowchemy website builder.'
-    twitter: 'wowchemy'
+    description: 'enguy-hub's personal website.'
+    twitter: ''
   analytics:
     google_analytics: ''
     baidu_tongji: ''
@@ -43,12 +43,12 @@ header:
 
 footer:
   copyright:
-    notice: '© {year} Me. This work is licensed under {license}'
+    notice: '© {year} All rights reserved. Licensed under {license}'
     license:
       enable: true
-      allow_derivatives: false
-      share_alike: true
-      allow_commercial: false
+    #   allow_derivatives: false
+      # share_alike: true
+      # allow_commercial: false
 
 # Localization
 
