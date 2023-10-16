@@ -41,10 +41,10 @@ header:
     show_search: true
     highlight_active_link: false
 
-footer:
-  copyright:
-    notice: '© {year} enguy-hub. All right reserved, licensed under {license}'
-    license:
+#footer:
+#  copyright:
+#    notice: '© {year} enguy-hub. All right reserved, licensed under {license}'
+#    license:
       enable: true
       # allow_derivatives: false
       # share_alike: true
