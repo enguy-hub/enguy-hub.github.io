@@ -28,15 +28,15 @@ social:
   # - icon: envelope
   #   icon_pack: fas
   #   link: 'mailto:test@gmail.com'
-  - icon: researchgate
-    icon_pack: fab
-    link: https://www.researchgate.net/profile/Hien-Nguyen-153
   - icon: github
     icon_pack: fab
     link: https://github.com/enguy-hub
   - icon: linkedin
     icon_pack: fab
     link: https://www.linkedin.com/in/hien-n-20ab20a5/
+  - icon: researchgate
+    icon_pack: fab
+    link: https://www.researchgate.net/profile/Hien-Nguyen-153
 
 # Link to a PDF of your resume/CV from the About widget.
   # To enable, copy your resume/CV to `static/uploads/resume.pdf`
