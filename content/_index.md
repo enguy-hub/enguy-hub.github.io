@@ -17,7 +17,7 @@ sections:
         text_color_light: true
         image:
           # Add your image background to `assets/media/`.
-          filename: earth.jpg
+          filename: earth1.jpg
           filters:
             brightness: 0.4
           size: cover
