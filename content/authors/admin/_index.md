@@ -1,6 +1,6 @@
 ---
 # Display name
-title: Hi 👋, I am enguy-hub (Hien Nguyen)
+title: Hi 👋, I am HiEN (enguy-hub)
 
 # Is this the primary user of the site?
 superuser: true
