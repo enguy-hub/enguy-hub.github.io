@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8" />
+    <title>Sentinel2 | Mosaic Best 3 Scenes</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Leaflet.draw for bbox selection -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
+    <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+    <style>
+        html,
+        body,
+        #map {
+            height: 100%;
+            margin: 0
+        }
+
+        .toolbar {
+            position: absolute;
+            z-index: 1000;
+            top: 10px;
+            right: 10px;
+            /* move to top-right so draw tools (top-left) are visible */
+            left: auto;
+            background: #fff;
+            padding: 8px 10px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, .15);
+            font: 13px system-ui, sans-serif
+        }
+
+        .toolbar button {
+            margin: 2px 0;
+            width: 190px
+        }
+
+        .busy {
+            position: absolute;
+            z-index: 1100;
+            top: 60px;
+            /* nudge below toolbar */
+            right: 10px;
+            background: rgba(0, 0, 0, 0.75);
+            color: #fff;
+            padding: 6px 10px;
+            border-radius: 6px;
+            font: 13px system-ui, sans-serif;
+            display: none;
+        }
+
+        .info-panel {
+            position: absolute;
+            z-index: 1000;
+            right: 10px;
+            bottom: 10px;
+            background: #fff;
+            padding: 8px 10px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, .15);
+            font: 13px system-ui, sans-serif;
+            min-width: 220px;
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+    <div class="toolbar">
+        <button id="btnTrue" disabled>Show True Color</button><br />
+        <button id="btnNDVI" disabled>Show NDVI</button>
+        <hr />
+        <label for="cloudMax"><strong>Max Cloud</strong>: <span id="cloudMaxLabel">100%</span></label><br />
+        <input id="cloudMax" type="range" min="0" max="100" step="1" value="100" style="width:190px" />
+        <br />
+        <label><strong>Date Range</strong> (optional)</label><br />
+        <input id="dateStart" type="date" /> — <input id="dateEnd" type="date" />
+        <div style="margin-top:4px; font-size:12px; color:#555">or use recent window:</div>
+        <select id="recentDays" style="width:190px">
+            <option value="30">Last 30 days</option>
+            <option value="90" selected>Last 90 days</option>
+            <option value="180">Last 180 days</option>
+            <option value="365">Last 365 days</option>
+        </select>
+        <br />
+        <button id="btnSearch">Search In BBox</button>
+    </div>
+    <div id="busy" class="busy">Searching best scene ...</div>
+    <div id="info" class="info-panel"></div>
+
+    <script>
+        // === Collection and initial item (defaults) ===
+        const COLLECTION = "sentinel-2-l2a";
+        let CURRENT_ITEM = "S2C_MSIL2A_20250907T024601_R132_T50SQG_20250907T055515";
+        let RECENT_DAYS = 90; // default search window for "latest with least clouds"
+
+        // TileJSON endpoint (MPC TiTiler) for a single item
+        const ITEM_BASE = "https://planetarycomputer.microsoft.com/api/data/v1/item/tilejson.json";
+
+        function buildItemUrls(itemId, bbox) {
+            const bboxParam = bbox && bbox.length === 4 ? `&bbox=${bbox.join(',')}` : '';
+            const trueUrl = `${ITEM_BASE}?collection=${encodeURIComponent(COLLECTION)}&item=${encodeURIComponent(itemId)}&assets=visual&asset_bidx=visual%7C1%2C2%2C3&nodata=0&format=png${bboxParam}`;
+            const ndviUrl = `${ITEM_BASE}?collection=${encodeURIComponent(COLLECTION)}&item=${encodeURIComponent(itemId)}&expression=${encodeURIComponent("(B08-B04)/(B08+B04)")}&rescale=-1,1&colormap_name=rdylgn&asset_as_band=true${bboxParam}`;
+            return { trueUrl, ndviUrl };
+        }
+
+        function randomBboxInCamargue() {
+            // Rough extent of Camargue region (lon/lat)
+            const W = 4.2, E = 4.8, S = 43.3, N = 43.6;
+            // Random center within margins to keep box inside
+            const width = 0.18, height = 0.12; // ~20x13 km
+            const cx = W + 0.1 + Math.random() * (E - W - 0.2);
+            const cy = S + 0.06 + Math.random() * (N - S - 0.12);
+            const w = cx - width / 2;
+            const e = cx + width / 2;
+            const s = cy - height / 2;
+            const n = cy + height / 2;
+            return [w, s, e, n];
+        }
+
+        const map = L.map("map").setView([0, 0], 2);
+        L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+            { attribution: "© Carto Positron (Light Gray)" }).addTo(map);
+
+        let trueLayer = null, ndviLayer = null, didFit = false;
+        let cropBounds = null; // Leaflet LatLngBounds when bbox is set
+        let drawnBox = null;   // The rectangle layer on the map
+        let CURRENT_META = null; // { id, cloud, datetime } or array
+        let hasScene = false;
+        let CURRENT_IDS = null;  // array of item ids when mosaic
+
+        async function getTileJSON(url) {
+            const r = await fetch(url);
+            if (!r.ok) throw new Error(`TileJSON failed ${r.status}`);
+            const tj = await r.json();
+            if (!tj.tiles || !tj.tiles[0]) throw new Error("No 'tiles' in TileJSON");
+            return tj;
+        }
+
+        function addFromTileJSON(tj, opts = {}) {
+            const layer = L.tileLayer(tj.tiles[0], {
+                attribution: tj.attribution || "Microsoft Planetary Computer, Copernicus",
+                minZoom: tj.minzoom ?? undefined,
+                maxZoom: tj.maxzoom ?? undefined,
+                bounds: cropBounds ?? undefined,
+                ...opts
+            });
+            if (!didFit) {
+                if (cropBounds) {
+                    map.fitBounds(cropBounds, { maxZoom: tj.maxzoom ?? 12 });
+                    didFit = true;
+                } else if (Array.isArray(tj.bounds) && tj.bounds.length === 4) {
+                    const [w, s, e, n] = tj.bounds;
+                    map.fitBounds([[s, w], [n, e]], { maxZoom: tj.maxzoom ?? 12 });
+                    didFit = true;
+                }
+            }
+            return layer;
+        }
+
+        function showOnly(layerToShow) {
+            [trueLayer, ndviLayer].forEach(l => { if (l && map.hasLayer(l)) map.removeLayer(l); });
+            if (layerToShow) layerToShow.addTo(map);
+        }
+
+        function setLayerToggleEnabled(enabled) {
+            document.getElementById('btnTrue').disabled = !enabled;
+            document.getElementById('btnNDVI').disabled = !enabled;
+        }
+
+        function formatDate(iso) {
+            if (!iso) return '';
+            try { return new Date(iso).toLocaleString(); } catch { return iso; }
+        }
+
+        function updateInfo(meta) {
+            const panel = document.getElementById('info');
+            if (!meta) { panel.style.display = 'none'; panel.innerHTML = ''; return; }
+            const metas = Array.isArray(meta) ? meta : [meta];
+            const rows = metas.map((m, i) => {
+                const cloudStr = typeof m.cloud === 'number' ? `${m.cloud.toFixed(1)}%` : 'n/a';
+                return `<div style="margin-top:6px"><strong>#${i + 1}</strong><br/><div style=\"word-break: break-all\">${m.id}</div><div><strong>Date:</strong> ${formatDate(m.datetime)}</div><div><strong>Cloud:</strong> ${cloudStr}</div></div>`;
+            }).join('');
+            panel.innerHTML = `
+                <div><strong>Mosaic</strong>: ${metas.length} scenes</div>
+                ${rows}
+            `;
+            panel.style.display = 'block';
+        }
+
+        async function setLayersForItems(itemIds, bbox, meta) {
+            // reset fit flag so each new item/bbox fits once
+            didFit = false;
+
+            // Fetch TileJSON for each item for both true and NDVI
+            // Maintain order so lower cloud (best) is last and sits on top.
+            const requests = itemIds.map(id => {
+                const { trueUrl, ndviUrl } = buildItemUrls(id, bbox);
+                return Promise.all([getTileJSON(trueUrl), getTileJSON(ndviUrl)]);
+            });
+            const results = await Promise.all(requests);
+
+            // Remove existing layers
+            showOnly(null);
+
+            // Build layer groups by stacking per-item layers
+            const trueLayers = [];
+            const ndviLayers = [];
+            results.forEach(([tjTrue, tjNdvi]) => {
+                trueLayers.push(addFromTileJSON(tjTrue));
+                ndviLayers.push(addFromTileJSON(tjNdvi, { opacity: 0.9 }));
+            });
+            trueLayer = L.layerGroup(trueLayers);
+            ndviLayer = L.layerGroup(ndviLayers);
+            showOnly(ndviLayer); // NDVI by default
+
+            hasScene = true;
+            setLayerToggleEnabled(true);
+            updateInfo(meta || CURRENT_META);
+        }
+
+        function setBusy(isBusy) {
+            const el = document.getElementById('busy');
+            el.style.display = isBusy ? 'block' : 'none';
+            // Keep toggles disabled unless a scene is loaded
+            document.getElementById('btnTrue').disabled = isBusy || !hasScene;
+            document.getElementById('btnNDVI').disabled = isBusy || !hasScene;
+        }
+
+        function getSearchParams() {
+            const maxCloud = Number(document.getElementById('cloudMax').value);
+            const startStr = document.getElementById('dateStart').value; // YYYY-MM-DD or ''
+            const endStr = document.getElementById('dateEnd').value;     // YYYY-MM-DD or ''
+            const recentSel = Number(document.getElementById('recentDays').value || RECENT_DAYS);
+
+            let startIso, endIso;
+            if (startStr || endStr) {
+                // If one end missing, fill with recent window
+                const now = new Date();
+                const today = now.toISOString().slice(0, 10);
+                const filledStart = startStr || today;
+                const filledEnd = endStr || today;
+                startIso = `${filledStart}T00:00:00Z`;
+                endIso = `${filledEnd}T23:59:59Z`;
+                if (new Date(startIso) > new Date(endIso)) {
+                    throw new Error('Start date must be before end date');
+                }
+            } else {
+                const now = new Date();
+                const start = new Date(now.getTime() - recentSel * 24 * 3600 * 1000);
+                startIso = start.toISOString();
+                endIso = now.toISOString();
+            }
+            RECENT_DAYS = recentSel; // keep in sync for later
+            return { maxCloud, startIso, endIso };
+        }
+
+        async function searchLatestLeastCloud(bbox) {
+            const { maxCloud, startIso, endIso } = getSearchParams();
+            const url = "https://planetarycomputer.microsoft.com/api/stac/v1/search";
+            const body = {
+                collections: [COLLECTION],
+                bbox,
+                limit: 3,
+                datetime: `${startIso}/${endIso}`,
+                sortby: [
+                    { field: "properties.eo:cloud_cover", direction: "asc" },
+                    { field: "properties.datetime", direction: "desc" }
+                ],
+                query: maxCloud < 100 ? { "eo:cloud_cover": { lte: maxCloud } } : undefined
+            };
+            const r = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            if (!r.ok) throw new Error(`STAC search failed ${r.status}`);
+            const json = await r.json();
+            const feats = (json.features || []).slice(0, 3);
+            if (!feats.length) throw new Error('No Sentinel-2 items found in bbox');
+            const metas = feats.map(f => ({ id: f.id, cloud: f.properties?.["eo:cloud_cover"], datetime: f.properties?.datetime }));
+            return metas;
+        }
+
+        function bboxFromLatLngBounds(llb) {
+            const sw = llb.getSouthWest();
+            const ne = llb.getNorthEast();
+            return [sw.lng, sw.lat, ne.lng, ne.lat]; // [w,s,e,n]
+        }
+
+        function drawInit() {
+            const drawControl = new L.Control.Draw({
+                position: 'topleft',
+                draw: {
+                    polygon: false,
+                    polyline: false,
+                    circle: false,
+                    marker: false,
+                    circlemarker: false,
+                    rectangle: { shapeOptions: { color: '#e91e63', fillOpacity: 0.05 } }
+                },
+                edit: false
+            });
+            map.addControl(drawControl);
+
+            map.on(L.Draw.Event.CREATED, async (e) => {
+                try {
+                    // Remove previous box
+                    if (drawnBox) map.removeLayer(drawnBox);
+                    drawnBox = e.layer.addTo(map);
+                    cropBounds = drawnBox.getBounds();
+                    const bbox = bboxFromLatLngBounds(cropBounds);
+
+                    setBusy(true);
+                    const metas = await searchLatestLeastCloud(bbox);
+                    CURRENT_IDS = metas.map(m => m.id);
+                    CURRENT_META = metas;
+                    await setLayersForItems(CURRENT_IDS, bbox, CURRENT_META);
+                    console.log('Selected items', metas);
+                } catch (err) {
+                    console.error(err);
+                    alert(err.message || err);
+                } finally {
+                    setBusy(false);
+                }
+            });
+        }
+
+        (async () => {
+            // Buttons
+            document.getElementById("btnTrue").onclick = () => showOnly(trueLayer);
+            document.getElementById("btnNDVI").onclick = () => showOnly(ndviLayer);
+            document.getElementById('cloudMax').addEventListener('input', (e) => {
+                document.getElementById('cloudMaxLabel').textContent = `${e.target.value}%`;
+            });
+            document.getElementById('recentDays').addEventListener('change', (e) => {
+                RECENT_DAYS = Number(e.target.value || 90);
+            });
+            document.getElementById('btnSearch').onclick = async () => {
+                if (!drawnBox) { alert('Draw a bounding box first (use the rectangle tool).'); return; }
+                try {
+                    setBusy(true);
+                    const bbox = bboxFromLatLngBounds(drawnBox.getBounds());
+                    const metas = await searchLatestLeastCloud(bbox);
+                    CURRENT_IDS = metas.map(m => m.id);
+                    CURRENT_META = metas;
+                    await setLayersForItems(CURRENT_IDS, bbox, CURRENT_META);
+                    console.log('Selected items', metas);
+                } catch (err) {
+                    console.error(err);
+                    alert(err.message || err);
+                } finally {
+                    setBusy(false);
+                }
+            };
+
+            // Enable drawing a bbox to refine search and clip
+            drawInit();
+
+            // Default: random bbox in Camargue, auto-search mosaic and show NDVI
+            const camBBox = randomBboxInCamargue();
+            cropBounds = L.latLngBounds([camBBox[1], camBBox[0]], [camBBox[3], camBBox[2]]);
+            drawnBox = L.rectangle(cropBounds, { color: '#e91e63', weight: 2, fillOpacity: 0.05 }).addTo(map);
+            map.fitBounds(cropBounds);
+            try {
+                setBusy(true);
+                const metas = await searchLatestLeastCloud(camBBox);
+                CURRENT_IDS = metas.map(m => m.id);
+                CURRENT_META = metas;
+                await setLayersForItems(CURRENT_IDS, camBBox, CURRENT_META);
+            } catch (err) {
+                console.error(err);
+            } finally {
+                setBusy(false);
+            }
+        })().catch(err => {
+            console.error(err);
+            alert(err.message || err);
+        });
+    </script>
+</body>
+
+</html>

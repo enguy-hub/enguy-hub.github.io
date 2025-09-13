@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8" />
+  <title>Sentinel2 | Best Scene</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Leaflet.draw for bbox selection -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
+  <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+  <style>
+    html,
+    body,
+    #map {
+      height: 100%;
+      margin: 0
+    }
+
+    .toolbar {
+      position: absolute;
+      z-index: 1000;
+      top: 10px;
+      right: 10px;
+      left: auto;
+      background: #fff;
+      padding: 8px 10px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, .15);
+      font: 13px system-ui, sans-serif;
+    }
+
+    .toolbar button {
+      margin: 2px 0;
+      width: 190px
+    }
+
+    .busy {
+      position: absolute;
+      z-index: 1100;
+      top: 60px;
+      right: 10px;
+      background: rgba(0, 0, 0, .75);
+      color: #fff;
+      padding: 6px 10px;
+      border-radius: 6px;
+      font: 13px system-ui, sans-serif;
+      display: none;
+    }
+
+    .info-panel {
+      position: absolute;
+      z-index: 1000;
+      right: 10px;
+      bottom: 10px;
+      background: #fff;
+      padding: 8px 10px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, .15);
+      font: 13px system-ui, sans-serif;
+      min-width: 220px;
+      display: none;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="map"></div>
+  <div class="toolbar">
+    <button id="btnTrue" disabled>Show True Color</button><br />
+    <button id="btnNDVI" disabled>Show NDVI</button>
+    <hr />
+    <label for="cloudMax"><strong>Max Cloud</strong>: <span id="cloudMaxLabel">100%</span></label><br />
+    <input id="cloudMax" type="range" min="0" max="100" step="1" value="100" style="width:190px" />
+    <br />
+    <label><strong>Date Range</strong> (optional)</label><br />
+    <input id="dateStart" type="date" /> — <input id="dateEnd" type="date" />
+    <div style="margin-top:4px; font-size:12px; color:#555">or use recent window:</div>
+    <select id="recentDays" style="width:190px">
+      <option value="30">Last 30 days</option>
+      <option value="90" selected>Last 90 days</option>
+      <option value="180">Last 180 days</option>
+      <option value="365">Last 365 days</option>
+    </select>
+    <br />
+    <button id="btnSearch">Search In Box</button>
+  </div>
+  <div id="busy" class="busy">Searching best scene…</div>
+  <div id="info" class="info-panel"></div>
+
+  <script>
+    // Config
+    const COLLECTION = "sentinel-2-l2a";
+    const ITEM_BASE = "https://planetarycomputer.microsoft.com/api/data/v1/item/tilejson.json";
+    let RECENT_DAYS = 90;
+
+    function buildItemUrls(itemId, bbox) {
+      const bboxParam = bbox && bbox.length === 4 ? `&bbox=${bbox.join(',')}` : '';
+      const trueUrl = `${ITEM_BASE}?collection=${encodeURIComponent(COLLECTION)}&item=${encodeURIComponent(itemId)}&assets=visual&asset_bidx=visual%7C1%2C2%2C3&nodata=0&format=png${bboxParam}`;
+      const ndviUrl = `${ITEM_BASE}?collection=${encodeURIComponent(COLLECTION)}&item=${encodeURIComponent(itemId)}&expression=${encodeURIComponent('(B08-B04)/(B08+B04)')}&rescale=-1,1&colormap_name=rdylgn&asset_as_band=true${bboxParam}`;
+      return { trueUrl, ndviUrl };
+    }
+
+    function randomBboxInCamargue() {
+      const W = 4.2, E = 4.8, S = 43.3, N = 43.6;
+      const width = 0.18, height = 0.12;
+      const cx = W + 0.1 + Math.random() * (E - W - 0.2);
+      const cy = S + 0.06 + Math.random() * (N - S - 0.12);
+      const w = cx - width / 2, e = cx + width / 2, s = cy - height / 2, n = cy + height / 2;
+      return [w, s, e, n];
+    }
+
+    // Map init
+    const map = L.map('map').setView([0, 0], 2);
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+      { attribution: "© Carto Dark Matter (Dark)" }).addTo(map);
+
+    // State
+    let trueLayer = null, ndviLayer = null, didFit = false;
+    let cropBounds = null, drawnBox = null, hasScene = false;
+    let CURRENT_ID = null; // string
+    let CURRENT_META = null; // { id, cloud, datetime }
+
+    async function getTileJSON(url) {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(`TileJSON failed ${r.status}`);
+      const tj = await r.json();
+      if (!tj.tiles || !tj.tiles[0]) throw new Error("No 'tiles' in TileJSON");
+      return tj;
+    }
+
+    function addFromTileJSON(tj, opts = {}) {
+      const layer = L.tileLayer(tj.tiles[0], {
+        attribution: tj.attribution || 'Microsoft Planetary Computer, Copernicus',
+        minZoom: tj.minzoom ?? undefined,
+        maxZoom: tj.maxzoom ?? undefined,
+        bounds: cropBounds ?? undefined,
+        ...opts
+      });
+      if (!didFit) {
+        if (cropBounds) {
+          map.fitBounds(cropBounds, { maxZoom: tj.maxzoom ?? 12 });
+          didFit = true;
+        } else if (Array.isArray(tj.bounds) && tj.bounds.length === 4) {
+          const [w, s, e, n] = tj.bounds;
+          map.fitBounds([[s, w], [n, e]], { maxZoom: tj.maxzoom ?? 12 });
+          didFit = true;
+        }
+      }
+      return layer;
+    }
+
+    function showOnly(layerToShow) {
+      [trueLayer, ndviLayer].forEach(l => { if (l && map.hasLayer(l)) map.removeLayer(l); });
+      if (layerToShow) layerToShow.addTo(map);
+    }
+
+    function setLayerToggleEnabled(enabled) {
+      document.getElementById('btnTrue').disabled = !enabled;
+      document.getElementById('btnNDVI').disabled = !enabled;
+    }
+
+    function formatDate(iso) {
+      if (!iso) return '';
+      try { return new Date(iso).toLocaleString(); } catch { return iso; }
+    }
+
+    function updateInfo(meta) {
+      const panel = document.getElementById('info');
+      if (!meta) { panel.style.display = 'none'; panel.innerHTML = ''; return; }
+      const cloudStr = typeof meta.cloud === 'number' ? `${meta.cloud.toFixed(1)}%` : 'n/a';
+      panel.innerHTML = `
+          <div><strong>Best Scene</strong></div>
+          <div style="margin-top:6px">
+            <div style="word-break: break-all">${meta.id}</div>
+            <div><strong>Date:</strong> ${formatDate(meta.datetime)}</div>
+            <div><strong>Cloud:</strong> ${cloudStr}</div>
+          </div>`;
+      panel.style.display = 'block';
+    }
+
+    async function setLayersForItem(itemId, bbox, meta) {
+      didFit = false;
+      const { trueUrl, ndviUrl } = buildItemUrls(itemId, bbox);
+      const [tjTrue, tjNdvi] = await Promise.all([getTileJSON(trueUrl), getTileJSON(ndviUrl)]);
+
+      showOnly(null);
+      trueLayer = addFromTileJSON(tjTrue);
+      ndviLayer = addFromTileJSON(tjNdvi, { opacity: 0.9 });
+      showOnly(ndviLayer); // NDVI by default
+
+      hasScene = true;
+      setLayerToggleEnabled(true);
+      updateInfo(meta || CURRENT_META);
+    }
+
+    function setBusy(isBusy) {
+      const el = document.getElementById('busy');
+      el.style.display = isBusy ? 'block' : 'none';
+      document.getElementById('btnTrue').disabled = isBusy || !hasScene;
+      document.getElementById('btnNDVI').disabled = isBusy || !hasScene;
+    }
+
+    function getSearchParams() {
+      const maxCloud = Number(document.getElementById('cloudMax').value);
+      const startStr = document.getElementById('dateStart').value;
+      const endStr = document.getElementById('dateEnd').value;
+      const recentSel = Number(document.getElementById('recentDays').value || RECENT_DAYS);
+      let startIso, endIso;
+      if (startStr || endStr) {
+        const now = new Date();
+        const today = now.toISOString().slice(0, 10);
+        const filledStart = startStr || today;
+        const filledEnd = endStr || today;
+        startIso = `${filledStart}T00:00:00Z`;
+        endIso = `${filledEnd}T23:59:59Z`;
+        if (new Date(startIso) > new Date(endIso)) {
+          throw new Error('Start date must be before end date');
+        }
+      } else {
+        const now = new Date();
+        const start = new Date(now.getTime() - recentSel * 24 * 3600 * 1000);
+        startIso = start.toISOString();
+        endIso = now.toISOString();
+      }
+      RECENT_DAYS = recentSel;
+      return { maxCloud, startIso, endIso };
+    }
+
+    async function searchBestLeastCloud(bbox) {
+      const { maxCloud, startIso, endIso } = getSearchParams();
+      const url = 'https://planetarycomputer.microsoft.com/api/stac/v1/search';
+      const body = {
+        collections: [COLLECTION],
+        bbox,
+        limit: 1,
+        datetime: `${startIso}/${endIso}`,
+        sortby: [
+          { field: 'properties.eo:cloud_cover', direction: 'asc' },
+          { field: 'properties.datetime', direction: 'desc' }
+        ],
+        query: maxCloud < 100 ? { 'eo:cloud_cover': { lte: maxCloud } } : undefined
+      };
+      const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (!r.ok) throw new Error(`STAC search failed ${r.status}`);
+      const json = await r.json();
+      const feat = (json.features || [])[0];
+      if (!feat) throw new Error('No Sentinel-2 items found in bbox');
+      return { id: feat.id, cloud: feat.properties?.['eo:cloud_cover'], datetime: feat.properties?.datetime };
+    }
+
+    function bboxFromLatLngBounds(llb) {
+      const sw = llb.getSouthWest();
+      const ne = llb.getNorthEast();
+      return [sw.lng, sw.lat, ne.lng, ne.lat];
+    }
+
+    function drawInit() {
+      const drawControl = new L.Control.Draw({
+        position: 'topleft',
+        draw: {
+          polygon: false, polyline: false, circle: false, marker: false, circlemarker: false,
+          rectangle: { shapeOptions: { color: '#e91e63', fillOpacity: 0.05 } }
+        },
+        edit: false
+      });
+      map.addControl(drawControl);
+
+      map.on(L.Draw.Event.CREATED, async (e) => {
+        try {
+          if (drawnBox) map.removeLayer(drawnBox);
+          drawnBox = e.layer.addTo(map);
+          cropBounds = drawnBox.getBounds();
+          const bbox = bboxFromLatLngBounds(cropBounds);
+          setBusy(true);
+          const meta = await searchBestLeastCloud(bbox);
+          CURRENT_ID = meta.id; CURRENT_META = meta;
+          await setLayersForItem(CURRENT_ID, bbox, CURRENT_META);
+          console.log('Selected item', meta);
+        } catch (err) {
+          console.error(err);
+          alert(err.message || err);
+        } finally { setBusy(false); }
+      });
+    }
+
+    (async () => {
+      // Buttons
+      document.getElementById('btnTrue').onclick = () => showOnly(trueLayer);
+      document.getElementById('btnNDVI').onclick = () => showOnly(ndviLayer);
+      document.getElementById('cloudMax').addEventListener('input', (e) => {
+        document.getElementById('cloudMaxLabel').textContent = `${e.target.value}%`;
+      });
+      document.getElementById('recentDays').addEventListener('change', (e) => {
+        RECENT_DAYS = Number(e.target.value || 90);
+      });
+      document.getElementById('btnSearch').onclick = async () => {
+        if (!drawnBox) { alert('Draw a bounding box first (use the rectangle tool).'); return; }
+        try {
+          setBusy(true);
+          const bbox = bboxFromLatLngBounds(drawnBox.getBounds());
+          const meta = await searchBestLeastCloud(bbox);
+          CURRENT_ID = meta.id; CURRENT_META = meta;
+          await setLayersForItem(CURRENT_ID, bbox, CURRENT_META);
+          console.log('Selected item', meta);
+        } catch (err) {
+          console.error(err);
+          alert(err.message || err);
+        } finally { setBusy(false); }
+      };
+
+      // Enable drawing a bbox to refine search and clip
+      drawInit();
+
+      // Default: random bbox in Camargue, auto-search best scene and show NDVI
+      const camBBox = randomBboxInCamargue();
+      cropBounds = L.latLngBounds([camBBox[1], camBBox[0]], [camBBox[3], camBBox[2]]);
+      drawnBox = L.rectangle(cropBounds, { color: '#e91e63', weight: 2, fillOpacity: 0.05 }).addTo(map);
+      map.fitBounds(cropBounds);
+      try {
+        setBusy(true);
+        const meta = await searchBestLeastCloud(camBBox);
+        CURRENT_ID = meta.id; CURRENT_META = meta;
+        await setLayersForItem(CURRENT_ID, camBBox, CURRENT_META);
+      } catch (err) {
+        console.error(err);
+      } finally { setBusy(false); }
+    })().catch(err => { console.error(err); alert(err.message || err); });
+  </script>
+</body>
+
+</html>
