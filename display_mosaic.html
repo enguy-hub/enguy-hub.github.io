@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="utf-8" />
-    <title>Sentinel2 | Mosaic Best 3 Scenes</title>
+    <title>Mosaic S2 Scenes | NDVI - RGB</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <!-- Leaflet.draw for bbox selection -->
@@ -41,14 +41,19 @@
         .busy {
             position: absolute;
             z-index: 1100;
-            top: 60px;
-            /* nudge below toolbar */
-            right: 10px;
-            background: rgba(0, 0, 0, 0.75);
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            right: auto;
+            background: rgba(0, 0, 0, .75);
             color: #fff;
-            padding: 6px 10px;
+            padding: 10px 14px;
             border-radius: 6px;
             font: 13px system-ui, sans-serif;
+            font-size: 16px;
+            font-weight: 600;
+            text-align: center;
+            line-height: 1.3;
             display: none;
         }
 
@@ -81,6 +86,20 @@
             overflow: auto;
             display: none;
         }
+
+        .hint {
+            position: absolute;
+            z-index: 900;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.95);
+            color: #333;
+            padding: 8px 12px;
+            border-radius: 6px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+            font: 14px system-ui, sans-serif;
+        }
     </style>
 </head>
 
@@ -88,9 +107,11 @@
     <div id="map"></div>
     <div class="toolbar">
         <button id="btnToggle" disabled>Toggle NDVI / RGB</button><br />
-        <button id="btnExportAOI" style="margin-top:6px">Export AOI (GeoJSON)</button>
+        <button id="btnExportAOI" style="margin-top:6px">Export AOI (GeoJSON)</button><br />
+        <button id="btnClearAOI" style="margin-top:6px">Clear AOI</button>
     </div>
-    <div id="busy" class="busy">Searching best scene ...</div>
+    <div id="busy" class="busy">Querying data, please wait ...</div>
+    <div id="hint" class="hint">Draw a rectangle or polygon AOI to start.</div>
     <div id="info" class="info-panel"></div>
     <div id="leftPanel" class="left-panel">
         <div style="font-weight:600; margin-bottom:6px">NDVI Time Series (AOI mean)</div>
@@ -100,10 +121,13 @@
     <script>
         // === Collection and initial item (defaults) ===
         const COLLECTION = "sentinel-2-l2a";
+
+        // Example item id (in Camargue, France) - not actually used at start
         let REF_ITEM = "S2C_MSIL2A_20250907T024601_R132_T50SQG_20250907T055515";
 
-        // TileJSON endpoint (MPC TiTiler) for a single item
-        const ITEM_BASE = "https://planetarycomputer.microsoft.com/api/data/v1/item/tilejson.json";
+        // TileJSON endpoints (MPC TiTiler)
+        const ITEM_BASE = "https://planetarycomputer.microsoft.com/api/data/v1/item/tilejson.json"; // single item
+        const STAC_TILEJSON = "https://planetarycomputer.microsoft.com/api/data/v1/stac/tilejson.json"; // STAC (ids/search) mosaic
 
         function buildItemUrls(itemId, bbox) {
             const bboxParam = bbox && bbox.length === 4 ? `&bbox=${bbox.join(',')}` : '';
@@ -127,8 +151,8 @@
         }
 
         const map = L.map("map").setView([0, 0], 2);
-        L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
-            { attribution: "© Carto Positron (Light Gray)" }).addTo(map);
+        L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+            { attribution: "Tiles © Esri — World Imagery" }).addTo(map);
 
         let trueLayer = null, ndviLayer = null, didFit = false;
         let cropBounds = null; // Leaflet LatLngBounds when bbox is set
@@ -140,6 +164,7 @@
         let CURRENT_META = null; // { id, cloud, datetime } or array
         let hasScene = false;
         let CURRENT_IDS = null;  // array of item ids when mosaic
+        let CURRENT_FEATURES = null; // full STAC features for mosaic POST
 
         async function getTileJSON(url) {
             const r = await fetch(url);
@@ -229,6 +254,41 @@
             document.getElementById('btnToggle').disabled = !enabled;
         }
 
+        function clearAOIAndData() {
+            // Remove drawn AOI
+            if (drawnBox) { map.removeLayer(drawnBox); }
+            drawnBox = null;
+            cropBounds = null;
+            aoiRingLatLng = null;
+            updateAoiClip();
+
+            // Remove imagery layers
+            showOnly(null);
+            trueLayer = null;
+            ndviLayer = null;
+            hasScene = false;
+            setToggleEnabled(false);
+
+            // Clear info panel
+            const info = document.getElementById('info');
+            info.innerHTML = '';
+            info.style.display = 'none';
+
+            // Clear NDVI chart and hide panel
+            const panel = document.getElementById('leftPanel');
+            if (ndviChart) { try { ndviChart.destroy(); } catch { } }
+            ndviChart = null;
+            panel.style.display = 'none';
+
+            // Reset current selection meta
+            CURRENT_META = null;
+            CURRENT_IDS = null;
+
+            // Show the hint again
+            const hint = document.getElementById('hint');
+            if (hint) hint.style.display = 'block';
+        }
+
         function formatDate(iso) {
             if (!iso) return '';
             try { return new Date(iso).toLocaleString(); } catch { return iso; }
@@ -243,7 +303,7 @@
                 return `<div style="margin-top:6px"><strong>#${i + 1}</strong><br/><div style=\"word-break: break-all\">${m.id}</div><div><strong>Date:</strong> ${formatDate(m.datetime)}</div><div><strong>Cloud:</strong> ${cloudStr}</div></div>`;
             }).join('');
             panel.innerHTML = `
-                <div><strong>Displaying | Mosaic of the 3 Least Cloud Cover S2 Scenes</strong></div>
+                <div><strong>Info: Displaying S2 Scenes used for Mosaic</strong></div>
                 ${rows}
             `;
             panel.style.display = 'block';
@@ -347,42 +407,101 @@
             await updateNdviTimeseries(metasAll);
         }
 
+        async function getStacMosaicTileJSON(urlParams, stacBody) {
+            const q = new URLSearchParams(urlParams);
+            const endpoints = [
+                'https://planetarycomputer.microsoft.com/api/data/v1/stac/tilejson.json',
+                'https://planetarycomputer.microsoft.com/api/data/v1/search/tilejson.json',
+                'https://planetarycomputer.microsoft.com/api/data/v1/stac/mosaic/tilejson.json'
+            ];
+            let lastErr = null;
+            for (const base of endpoints) {
+                const url = `${base}?${q.toString()}`;
+                try {
+                    const r = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(stacBody)
+                    });
+                    if (!r.ok) { lastErr = new Error(`Mosaic TileJSON failed ${r.status} at ${base}`); continue; }
+                    return await r.json();
+                } catch (e) { lastErr = e; }
+            }
+            if (lastErr) throw lastErr; else throw new Error('Mosaic TileJSON failed (no endpoints reachable)');
+        }
+
         async function setLayersForItems(itemIds, bbox, meta) {
-            // reset fit flag so each new item/bbox fits once
+            // Reset fit flag so each new item/bbox fits once
             didFit = false;
 
-            // Fetch TileJSON for each item for both true and NDVI
-            // Maintain order so lower cloud (best) is last and sits on top.
-            const requests = itemIds.map(id => {
-                const { trueUrl, ndviUrl } = buildItemUrls(id, bbox);
-                return Promise.all([getTileJSON(trueUrl), getTileJSON(ndviUrl)]);
-            });
-            const results = await Promise.all(requests);
+            // Build POST body and URL params for STAC mosaic. Prefer full features if available.
+            const stacBody = (Array.isArray(CURRENT_FEATURES) && CURRENT_FEATURES.length)
+                ? { type: 'FeatureCollection', features: CURRENT_FEATURES }
+                : { collections: [COLLECTION], ids: Array.isArray(itemIds) ? itemIds : [itemIds] };
+            const bboxParam = bbox && bbox.length === 4 ? { bbox: bbox.join(',') } : {};
 
-            // Remove existing layers
+            // Build URL params for true color and NDVI mosaics
+            const commonParams = { ...bboxParam };
+
+            const trueParams = {
+                assets: 'visual',
+                asset_bidx: 'visual|1,2,3',
+                nodata: '0',
+                format: 'png',
+                ...commonParams
+            };
+            const ndviParams = {
+                expression: '(B08-B04)/(B08+B04)',
+                rescale: '-1,1',
+                colormap_name: 'rdylgn',
+                asset_as_band: 'true',
+                ...commonParams
+            };
+
+            // Try to request a single TileJSON per mosaic (true + NDVI)
+            let tjTrue = null, tjNdvi = null;
+            try {
+                [tjTrue, tjNdvi] = await Promise.all([
+                    getStacMosaicTileJSON(trueParams, stacBody),
+                    getStacMosaicTileJSON(ndviParams, stacBody)
+                ]);
+            } catch (e) {
+                console.warn('Mosaic endpoints failed, falling back to stacking per-item layers.', e);
+            }
+
             showOnly(null);
+            if (tjTrue && tjNdvi) {
+                // Use proper mosaic layers
+                trueLayer = addFromTileJSON(tjTrue);
+                ndviLayer = addFromTileJSON(tjNdvi, { opacity: 0.9 });
+            } else {
+                // Fallback: stack per-item layers as groups
+                const requests = itemIds.map(id => {
+                    const { trueUrl, ndviUrl } = buildItemUrls(id, bbox);
+                    return Promise.all([getTileJSON(trueUrl), getTileJSON(ndviUrl)]);
+                });
+                const results = await Promise.all(requests);
+                const trueLayers = [];
+                const ndviLayers = [];
+                results.forEach(([tTrue, tNdvi]) => {
+                    trueLayers.push(addFromTileJSON(tTrue));
+                    ndviLayers.push(addFromTileJSON(tNdvi, { opacity: 0.9 }));
+                });
+                trueLayer = L.layerGroup(trueLayers);
+                ndviLayer = L.layerGroup(ndviLayers);
+            }
 
-            // Build layer groups by stacking per-item layers
-            const trueLayers = [];
-            const ndviLayers = [];
-            results.forEach(([tjTrue, tjNdvi]) => {
-                trueLayers.push(addFromTileJSON(tjTrue));
-                ndviLayers.push(addFromTileJSON(tjNdvi, { opacity: 0.9 }));
-            });
-            trueLayer = L.layerGroup(trueLayers);
-            ndviLayer = L.layerGroup(ndviLayers);
             showOnly(ndviLayer); // NDVI by default
             updateAoiClip();
 
             hasScene = true;
             setToggleEnabled(true);
             updateInfo(meta || CURRENT_META);
+            // Hide hint when AOI/data is active
+            const hintEl = document.getElementById('hint');
+            if (hintEl) hintEl.style.display = 'none';
             // Update NDVI time series (all scenes in last 6 months)
-            try {
-                await updateNdviTimeseriesAll();
-            } catch (e) {
-                console.warn('NDVI timeseries update failed', e);
-            }
+            try { await updateNdviTimeseriesAll(); } catch (e) { console.warn('NDVI timeseries update failed', e); }
         }
 
         function setBusy(isBusy) {
@@ -425,7 +544,7 @@
             const feats = (json.features || []).slice(0, 3);
             if (!feats.length) throw new Error('No Sentinel-2 items found in bbox');
             const metas = feats.map(f => ({ id: f.id, cloud: f.properties?.["eo:cloud_cover"], datetime: f.properties?.datetime }));
-            return metas;
+            return { metas, features: feats };
         }
 
         function bboxFromLatLngBounds(llb) {
@@ -451,6 +570,10 @@
 
             map.on(L.Draw.Event.CREATED, async (e) => {
                 try {
+                    // Hide hint on first AOI draw
+                    const hint = document.getElementById('hint');
+                    if (hint) hint.style.display = 'none';
+
                     // Remove previous AOI
                     if (drawnBox) map.removeLayer(drawnBox);
                     drawnBox = e.layer.addTo(map);
@@ -462,7 +585,9 @@
                     const aoi = intersects ? { intersects, bbox } : { bbox };
 
                     setBusy(true);
-                    const metas = await searchLatestLeastCloud(aoi);
+                    const res = await searchLatestLeastCloud(aoi);
+                    const metas = res.metas;
+                    CURRENT_FEATURES = res.features;
                     CURRENT_IDS = metas.map(m => m.id);
                     CURRENT_META = metas;
                     await setLayersForItems(CURRENT_IDS, bbox, CURRENT_META);
@@ -482,6 +607,11 @@
                 if (!trueLayer || !ndviLayer) return;
                 showingNdvi = !showingNdvi;
                 showOnly(showingNdvi ? ndviLayer : trueLayer);
+            };
+
+            // Clear AOI and all loaded data
+            document.getElementById('btnClearAOI').onclick = () => {
+                clearAOIAndData();
             };
 
             // Export AOI (GeoJSON)
@@ -512,24 +642,9 @@
             // Enable drawing a bbox to refine search and clip
             drawInit();
 
-            // Default: random bbox in Camargue, auto-search mosaic and show NDVI
-            const camBBox = randomBboxInCamargue();
-            cropBounds = L.latLngBounds([camBBox[1], camBBox[0]], [camBBox[3], camBBox[2]]);
-            drawnBox = L.rectangle(cropBounds, { color: '#e91e63', weight: 2, fillOpacity: 0.05 }).addTo(map);
-            aoiRingLatLng = latLngsFromRectangle(drawnBox);
-            map.fitBounds(cropBounds);
-            try {
-                setBusy(true);
-                const metas = await searchLatestLeastCloud({ bbox: camBBox });
-                CURRENT_IDS = metas.map(m => m.id);
-                CURRENT_META = metas;
-                await setLayersForItems(CURRENT_IDS, camBBox, CURRENT_META);
-                await updateNdviTimeseriesAll();
-            } catch (err) {
-                console.error(err);
-            } finally {
-                setBusy(false);
-            }
+            // Start with no AOI and no data loaded
+            // Center over Yemen highlands (agriculture), matching best_scene
+            map.setView([15.4, 44.2], 10);
             // keep clip in sync with map movements
             ['move', 'zoom', 'zoomend', 'resize', 'viewreset'].forEach(ev => map.on(ev, updateAoiClip));
         })().catch(err => {

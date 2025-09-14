@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="utf-8" />
-  <title>Sentinel2 | Best Scene</title>
+  <title>Single S2 Scene | NDVI - RGB</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <!-- Leaflet.draw for bbox selection -->
@@ -11,6 +11,8 @@
   <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
   <!-- Chart.js for time series plot -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <!-- Turf.js for geometry coverage calculations -->
+  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
   <style>
     html,
     body,
@@ -40,13 +42,19 @@
     .busy {
       position: absolute;
       z-index: 1100;
-      top: 60px;
-      right: 10px;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      right: auto;
       background: rgba(0, 0, 0, .75);
       color: #fff;
-      padding: 6px 10px;
+      padding: 10px 14px;
       border-radius: 6px;
       font: 13px system-ui, sans-serif;
+      font-size: 16px;
+      font-weight: 600;
+      text-align: center;
+      line-height: 1.3;
       display: none;
     }
 
@@ -79,6 +87,20 @@
       overflow: auto;
       display: none;
     }
+
+    .hint {
+      position: absolute;
+      z-index: 900;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(255, 255, 255, 0.95);
+      color: #333;
+      padding: 8px 12px;
+      border-radius: 6px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+      font: 14px system-ui, sans-serif;
+    }
   </style>
 </head>
 
@@ -88,7 +110,8 @@
     <button id="btnToggle" disabled>Toggle NDVI / RGB</button><br />
     <button id="btnExportAOI" style="margin-top:6px">Export AOI (GeoJSON)</button>
   </div>
-  <div id="busy" class="busy">Searching best scene…</div>
+  <div id="busy" class="busy">Querying data, please wait ...</div>
+  <div id="hint" class="hint">Draw a rectangle or polygon AOI to start.</div>
   <div id="info" class="info-panel"></div>
   <div id="leftPanel" class="left-panel">
     <div style="font-weight:600; margin-bottom:6px">NDVI Time Series (AOI mean)</div>
@@ -99,7 +122,6 @@
     // Config
     const COLLECTION = "sentinel-2-l2a";
     const ITEM_BASE = "https://planetarycomputer.microsoft.com/api/data/v1/item/tilejson.json";
-    let RECENT_DAYS = 90;
 
     function buildItemUrls(itemId, bbox) {
       const bboxParam = bbox && bbox.length === 4 ? `&bbox=${bbox.join(',')}` : '';
@@ -119,8 +141,8 @@
 
     // Map init
     const map = L.map('map').setView([0, 0], 2);
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-      { attribution: "© Carto Dark Matter (Dark)" }).addTo(map);
+    L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+      { attribution: "Tiles © Esri — World Imagery" }).addTo(map);
 
     // State
     let trueLayer = null, ndviLayer = null, didFit = false;
@@ -131,6 +153,7 @@
     let ndviChart = null;
     let CURRENT_ID = null; // string
     let CURRENT_META = null; // { id, cloud, datetime }
+    const COVERAGE_THRESHOLD = 0.95; // Require >= 95% AOI coverage
 
     async function getTileJSON(url) {
       const r = await fetch(url);
@@ -229,12 +252,14 @@
       const panel = document.getElementById('info');
       if (!meta) { panel.style.display = 'none'; panel.innerHTML = ''; return; }
       const cloudStr = typeof meta.cloud === 'number' ? `${meta.cloud.toFixed(1)}%` : 'n/a';
+      const covStr = typeof meta.coverage === 'number' ? `${(meta.coverage * 100).toFixed(1)}%` : 'n/a';
       panel.innerHTML = `
-          <div><strong>Displaying | Least Cloud Cover S2 Scene</strong></div>
+          <div><strong>Info: Displaying S2 Scene</strong></div>
           <div style="margin-top:6px">
             <div style="word-break: break-all">${meta.id}</div>
             <div><strong>Date:</strong> ${formatDate(meta.datetime)}</div>
             <div><strong>Cloud:</strong> ${cloudStr}</div>
+            <div><strong>AOI Coverage:</strong> ${covStr} (≥ ${(COVERAGE_THRESHOLD * 100) | 0}% required)</div>
           </div>`;
       panel.style.display = 'block';
     }
@@ -253,6 +278,8 @@
       hasScene = true;
       setToggleEnabled(true);
       updateInfo(meta || CURRENT_META);
+      const hintEl = document.getElementById('hint');
+      if (hintEl) hintEl.style.display = 'none';
       // Update NDVI time series over all scenes in last 6 months
       try { await updateNdviTimeseriesAll(); } catch (e) { console.warn('NDVI timeseries update failed', e); }
     }
@@ -270,6 +297,36 @@
       return { startIso: start.toISOString(), endIso: now.toISOString() };
     }
 
+    function polygonFromBbox(bbox) {
+      if (!Array.isArray(bbox) || bbox.length !== 4) return null;
+      const [w, s, e, n] = bbox;
+      return { type: 'Polygon', coordinates: [[[w, s], [e, s], [e, n], [w, n], [w, s]]] };
+    }
+
+    function getAoiGeometry(aoi) {
+      if (!aoi) return null;
+      if (aoi.intersects) return aoi.intersects; // already a polygon geometry
+      if (aoi.bbox) return polygonFromBbox(aoi.bbox);
+      return null;
+    }
+
+    function computeCoverageFraction(aoiGeom, itemGeom) {
+      try {
+        if (!aoiGeom || !itemGeom || !turf) return null;
+        const aoiFeat = turf.feature(aoiGeom);
+        const itemFeat = turf.feature(itemGeom);
+        const aArea = turf.area(aoiFeat);
+        if (!aArea || aArea <= 0) return null;
+        const inter = turf.intersect(aoiFeat, itemFeat);
+        if (!inter) return 0;
+        const iArea = turf.area(inter);
+        return iArea / aArea;
+      } catch (e) {
+        console.warn('Coverage computation failed', e);
+        return null;
+      }
+    }
+
     async function searchBestLeastCloud(aoi) {
       const { startIso, endIso } = getSearchParams();
       const url = 'https://planetarycomputer.microsoft.com/api/stac/v1/search';
@@ -279,20 +336,36 @@
       const body = {
         collections: [COLLECTION],
         ...where,
-        limit: 1,
+        limit: 200,
         datetime: `${startIso}/${endIso}`,
         sortby: [
           { field: 'properties.eo:cloud_cover', direction: 'asc' },
           { field: 'properties.datetime', direction: 'desc' }
         ],
-        // No explicit cloud threshold; just sort by least cloud
+        // Sort by least cloud; we'll then enforce coverage ≥ threshold
       };
       const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       if (!r.ok) throw new Error(`STAC search failed ${r.status}`);
       const json = await r.json();
-      const feat = (json.features || [])[0];
-      if (!feat) throw new Error('No Sentinel-2 items found in bbox');
-      return { id: feat.id, cloud: feat.properties?.['eo:cloud_cover'], datetime: feat.properties?.datetime };
+      const feats = (json.features || []);
+      if (!feats.length) throw new Error('No Sentinel-2 items found in AOI');
+
+      // Compute coverage for each feature in order; pick first meeting threshold
+      const aoiGeom = getAoiGeometry(aoi);
+      let best = null;
+      for (const f of feats) {
+        const cov = aoiGeom ? computeCoverageFraction(aoiGeom, f.geometry) : null;
+        const meta = { id: f.id, cloud: f.properties?.['eo:cloud_cover'], datetime: f.properties?.datetime, coverage: cov };
+        if (cov != null && cov >= COVERAGE_THRESHOLD) {
+          best = meta;
+          break; // first that meets threshold due to sort order
+        }
+        if (!best) best = meta; // fallback to the first while searching
+      }
+      if (best && (best.coverage == null || best.coverage < COVERAGE_THRESHOLD)) {
+        console.warn(`No scene covers ≥ ${COVERAGE_THRESHOLD * 100}% of AOI; falling back to least-cloud scene.`);
+      }
+      return best;
     }
 
     // ===== NDVI Time Series over AOI (all scenes in last 6 months) =====
@@ -407,6 +480,9 @@
 
       map.on(L.Draw.Event.CREATED, async (e) => {
         try {
+          // Hide hint when AOI is activated
+          const hintEl = document.getElementById('hint');
+          if (hintEl) hintEl.style.display = 'none';
           if (drawnBox) map.removeLayer(drawnBox);
           drawnBox = e.layer.addTo(map);
           cropBounds = drawnBox.getBounds();
@@ -463,21 +539,8 @@
       // Enable drawing a bbox to refine search and clip
       drawInit();
 
-      // Default: random bbox in Camargue, auto-search best scene and show NDVI
-      const camBBox = randomBboxInCamargue();
-      cropBounds = L.latLngBounds([camBBox[1], camBBox[0]], [camBBox[3], camBBox[2]]);
-      drawnBox = L.rectangle(cropBounds, { color: '#e91e63', weight: 2, fillOpacity: 0.05 }).addTo(map);
-      aoiRingLatLng = latLngsFromRectangle(drawnBox);
-      map.fitBounds(cropBounds);
-      try {
-        setBusy(true);
-        const meta = await searchBestLeastCloud({ bbox: camBBox });
-        CURRENT_ID = meta.id; CURRENT_META = meta;
-        await setLayersForItem(CURRENT_ID, camBBox, CURRENT_META);
-        await updateNdviTimeseriesAll();
-      } catch (err) {
-        console.error(err);
-      } finally { setBusy(false); }
+      // Start location: Yemen highlands (agricultural areas), no AOI drawn
+      map.setView([15.4, 44.2], 10);
       // keep clip in sync with map movements
       ['move', 'zoom', 'zoomend', 'resize', 'viewreset'].forEach(ev => map.on(ev, updateAoiClip));
     })().catch(err => { console.error(err); alert(err.message || err); });
