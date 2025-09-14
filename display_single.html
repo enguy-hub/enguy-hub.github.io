@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="utf-8" />
-  <title>Single S2 Scene | NDVI - RGB</title>
+  <title>Single | Sentinel2 NDVI - RGB</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <!-- Leaflet.draw for bbox selection -->
@@ -108,7 +108,9 @@
   <div id="map"></div>
   <div class="toolbar">
     <button id="btnToggle" disabled>Toggle NDVI / RGB</button><br />
-    <button id="btnExportAOI" style="margin-top:6px">Export AOI (GeoJSON)</button>
+    <button id="btnClearAOI" style="margin-top:6px" disabled>Clear AOI</button><br />
+    <button id="btnExportAOI" style="margin-top:6px; display:none" disabled>Export AOI (GeoJSON)</button><br />
+    <button id="btnExportTS" style="margin-top:6px; display:none" disabled>Export Time Series (CSV)</button><br />
   </div>
   <div id="busy" class="busy">Querying data, please wait ...</div>
   <div id="hint" class="hint">Draw a rectangle or polygon AOI to start.</div>
@@ -151,6 +153,7 @@
     let aoiRingLatLng = null; // polygon ring for clipping
     let showingNdvi = true;
     let ndviChart = null;
+    let TS_DATA = null; // { labels: string[], values: number[] }
     let CURRENT_ID = null; // string
     let CURRENT_META = null; // { id, cloud, datetime }
     const COVERAGE_THRESHOLD = 0.95; // Require >= 95% AOI coverage
@@ -243,6 +246,52 @@
       document.getElementById('btnToggle').disabled = !enabled;
     }
 
+    function clearAOIAndData() {
+      // Remove drawn AOI
+      if (drawnBox) { map.removeLayer(drawnBox); }
+      drawnBox = null;
+      cropBounds = null;
+      aoiRingLatLng = null;
+      updateAoiClip();
+
+      // Remove imagery layers
+      showOnly(null);
+      trueLayer = null;
+      ndviLayer = null;
+      hasScene = false;
+      setToggleEnabled(false);
+
+      // Clear info panel
+      const info = document.getElementById('info');
+      info.innerHTML = '';
+      info.style.display = 'none';
+
+      // Clear NDVI chart and hide panel
+      const panel = document.getElementById('leftPanel');
+      if (ndviChart) { try { ndviChart.destroy(); } catch { } }
+      ndviChart = null;
+      panel.style.display = 'none';
+
+      // Reset current selection meta
+      CURRENT_META = null;
+      CURRENT_ID = null;
+
+      // Show the hint again
+      const hint = document.getElementById('hint');
+      if (hint) hint.style.display = 'block';
+
+      // Hide/disable time series export
+      TS_DATA = null;
+      const btnTS = document.getElementById('btnExportTS');
+      if (btnTS) { btnTS.disabled = true; btnTS.style.display = 'none'; }
+      // Hide/disable AOI export
+      const btnAOI = document.getElementById('btnExportAOI');
+      if (btnAOI) { btnAOI.disabled = true; btnAOI.style.display = 'none'; }
+      // Disable Clear AOI button
+      const btnClear = document.getElementById('btnClearAOI');
+      if (btnClear) btnClear.disabled = true;
+    }
+
     function formatDate(iso) {
       if (!iso) return '';
       try { return new Date(iso).toLocaleString(); } catch { return iso; }
@@ -254,7 +303,7 @@
       const cloudStr = typeof meta.cloud === 'number' ? `${meta.cloud.toFixed(1)}%` : 'n/a';
       const covStr = typeof meta.coverage === 'number' ? `${(meta.coverage * 100).toFixed(1)}%` : 'n/a';
       panel.innerHTML = `
-          <div><strong>Info: Displaying S2 Scene</strong></div>
+          <div><strong>Info: S2 Scene (in display)</strong></div>
           <div style="margin-top:6px">
             <div style="word-break: break-all">${meta.id}</div>
             <div><strong>Date:</strong> ${formatDate(meta.datetime)}</div>
@@ -444,11 +493,35 @@
       }
       const means = await Promise.all(metas.map(m => fetchNdviMean(m.id, geom).catch(() => null)));
       const labels = metas.map(m => formatDateShort(m.datetime));
+      // store for export
+      TS_DATA = { labels, values: means };
+      const btnTS = document.getElementById('btnExportTS');
+      if (btnTS) { btnTS.style.display = 'inline-block'; btnTS.disabled = false; }
       const data = { labels, datasets: [{ label: 'Mean NDVI', data: means, borderColor: '#43a047', backgroundColor: 'rgba(67,160,71,0.25)', pointBackgroundColor: '#2e7d32', pointRadius: 4, showLine: true, tension: 0.2 }] };
       const cfg = { type: 'line', data, options: { responsive: false, scales: { y: { suggestedMin: -0.2, suggestedMax: 1.0, title: { display: true, text: 'NDVI' } }, x: { title: { display: true, text: 'Date' } } }, plugins: { legend: { display: false } } } };
       if (ndviChart) ndviChart.destroy();
       ndviChart = new Chart(canvas.getContext('2d'), cfg);
       panel.style.display = 'block';
+    }
+
+    function exportTimeseriesCSV() {
+      if (!TS_DATA || !Array.isArray(TS_DATA.labels) || !Array.isArray(TS_DATA.values)) return;
+      const rows = ['Date,Mean_NDVI'];
+      for (let i = 0; i < TS_DATA.labels.length; i++) {
+        const d = TS_DATA.labels[i] ?? '';
+        const v = TS_DATA.values[i];
+        const val = (typeof v === 'number' && !Number.isNaN(v)) ? v : '';
+        rows.push(`${d},${val}`);
+      }
+      const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'ndvi_timeseries.csv';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
     }
 
     async function updateNdviTimeseriesAll() {
@@ -483,6 +556,12 @@
           // Hide hint when AOI is activated
           const hintEl = document.getElementById('hint');
           if (hintEl) hintEl.style.display = 'none';
+          // Enable Clear AOI button
+          const btnClear = document.getElementById('btnClearAOI');
+          if (btnClear) btnClear.disabled = false;
+          // Show/enable Export AOI button
+          const btnAOI = document.getElementById('btnExportAOI');
+          if (btnAOI) { btnAOI.style.display = 'inline-block'; btnAOI.disabled = false; }
           if (drawnBox) map.removeLayer(drawnBox);
           drawnBox = e.layer.addTo(map);
           cropBounds = drawnBox.getBounds();
@@ -509,6 +588,14 @@
         if (!trueLayer || !ndviLayer) return;
         showingNdvi = !showingNdvi;
         showOnly(showingNdvi ? ndviLayer : trueLayer);
+      };
+
+      const btnTS = document.getElementById('btnExportTS');
+      btnTS.onclick = () => exportTimeseriesCSV();
+
+      // Clear AOI and all loaded data
+      document.getElementById('btnClearAOI').onclick = () => {
+        clearAOIAndData();
       };
 
       // Export AOI (GeoJSON)

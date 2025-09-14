@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="utf-8" />
-    <title>Mosaic S2 Scenes | NDVI - RGB</title>
+    <title>Mosaic | Sentinel2 NDVI - RGB</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <!-- Leaflet.draw for bbox selection -->
@@ -107,8 +107,9 @@
     <div id="map"></div>
     <div class="toolbar">
         <button id="btnToggle" disabled>Toggle NDVI / RGB</button><br />
-        <button id="btnExportAOI" style="margin-top:6px">Export AOI (GeoJSON)</button><br />
-        <button id="btnClearAOI" style="margin-top:6px">Clear AOI</button>
+        <button id="btnClearAOI" style="margin-top:6px" disabled>Clear AOI</button><br />
+        <button id="btnExportAOI" style="margin-top:6px; display:none" disabled>Export AOI (GeoJSON)</button><br />
+        <button id="btnExportTS" style="margin-top:6px; display:none" disabled>Export Time Series (CSV)</button><br />
     </div>
     <div id="busy" class="busy">Querying data, please wait ...</div>
     <div id="hint" class="hint">Draw a rectangle or polygon AOI to start.</div>
@@ -161,6 +162,7 @@
         let aoiRingLatLng = null; // polygon ring for clipping
         let showingNdvi = true;
         let ndviChart = null;
+        let TS_DATA = null; // { labels: string[], values: number[] }
         let CURRENT_META = null; // { id, cloud, datetime } or array
         let hasScene = false;
         let CURRENT_IDS = null;  // array of item ids when mosaic
@@ -283,6 +285,13 @@
             // Reset current selection meta
             CURRENT_META = null;
             CURRENT_IDS = null;
+            TS_DATA = null;
+            const btnTS = document.getElementById('btnExportTS');
+            if (btnTS) { btnTS.disabled = true; btnTS.style.display = 'none'; }
+            const btnAOI = document.getElementById('btnExportAOI');
+            if (btnAOI) { btnAOI.disabled = true; btnAOI.style.display = 'none'; }
+            const btnClear = document.getElementById('btnClearAOI');
+            if (btnClear) btnClear.disabled = true;
 
             // Show the hint again
             const hint = document.getElementById('hint');
@@ -303,7 +312,7 @@
                 return `<div style="margin-top:6px"><strong>#${i + 1}</strong><br/><div style=\"word-break: break-all\">${m.id}</div><div><strong>Date:</strong> ${formatDate(m.datetime)}</div><div><strong>Cloud:</strong> ${cloudStr}</div></div>`;
             }).join('');
             panel.innerHTML = `
-                <div><strong>Info: Displaying S2 Scenes used for Mosaic</strong></div>
+                <div><strong>Info: S2 Scenes used for Mosaic (in display)</strong></div>
                 ${rows}
             `;
             panel.style.display = 'block';
@@ -370,12 +379,36 @@
 
             const means = await Promise.all(metas.map(m => fetchNdviMean(m.id, geom).catch(() => null)));
             const labels = metas.map(m => formatDateShort(m.datetime));
+            // store for export
+            TS_DATA = { labels, values: means };
+            const btnTS = document.getElementById('btnExportTS');
+            if (btnTS) { btnTS.style.display = 'inline-block'; btnTS.disabled = false; }
 
             const data = { labels, datasets: [{ label: 'Mean NDVI', data: means, borderColor: '#43a047', backgroundColor: 'rgba(67,160,71,0.25)', pointBackgroundColor: '#2e7d32', pointRadius: 4, showLine: true, tension: 0.2 }] };
             const cfg = { type: 'line', data, options: { responsive: false, scales: { y: { suggestedMin: -0.2, suggestedMax: 1.0, title: { display: true, text: 'NDVI' } }, x: { title: { display: true, text: 'Date' } } }, plugins: { legend: { display: false } } } };
             if (ndviChart) ndviChart.destroy();
             ndviChart = new Chart(canvas.getContext('2d'), cfg);
             panel.style.display = 'block';
+        }
+
+        function exportTimeseriesCSV() {
+            if (!TS_DATA || !Array.isArray(TS_DATA.labels) || !Array.isArray(TS_DATA.values)) return;
+            const rows = ['Date,Mean_NDVI'];
+            for (let i = 0; i < TS_DATA.labels.length; i++) {
+                const d = TS_DATA.labels[i] ?? '';
+                const v = TS_DATA.values[i];
+                const val = (typeof v === 'number' && !Number.isNaN(v)) ? v : '';
+                rows.push(`${d},${val}`);
+            }
+            const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'ndvi_timeseries.csv';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
         }
 
         async function searchAllScenesForTimeseries(aoi) {
@@ -573,6 +606,12 @@
                     // Hide hint on first AOI draw
                     const hint = document.getElementById('hint');
                     if (hint) hint.style.display = 'none';
+                    // Enable Clear AOI button when an AOI is active
+                    const btnClear = document.getElementById('btnClearAOI');
+                    if (btnClear) btnClear.disabled = false;
+                    // Show/enable Export AOI button
+                    const btnAOI = document.getElementById('btnExportAOI');
+                    if (btnAOI) { btnAOI.style.display = 'inline-block'; btnAOI.disabled = false; }
 
                     // Remove previous AOI
                     if (drawnBox) map.removeLayer(drawnBox);
@@ -608,6 +647,9 @@
                 showingNdvi = !showingNdvi;
                 showOnly(showingNdvi ? ndviLayer : trueLayer);
             };
+
+            const btnTS = document.getElementById('btnExportTS');
+            btnTS.onclick = () => exportTimeseriesCSV();
 
             // Clear AOI and all loaded data
             document.getElementById('btnClearAOI').onclick = () => {
