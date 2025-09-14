@@ -101,6 +101,48 @@
       box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
       font: 14px system-ui, sans-serif;
     }
+
+    /* NDVI crop-stress legend */
+    .ndvi-legend {
+      position: absolute;
+      z-index: 1000;
+      left: 10px;
+      bottom: 10px;
+      background: #fff;
+      padding: 8px 10px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, .15);
+      font: 12px system-ui, sans-serif;
+      display: none;
+      min-width: 240px;
+    }
+    .ndvi-legend-title {
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    .ndvi-gradient {
+      height: 12px;
+      width: 240px;
+      border-radius: 6px;
+      background: linear-gradient(to right,
+        #a50026 0%,  #d73027 10%, #f46d43 20%, #fdae61 35%,
+        #fee08b 45%, #ffffbf 50%, #d9ef8b 60%, #a6d96a 75%,
+        #66bd63 85%, #1a9850 100%);
+      border: 1px solid rgba(0,0,0,0.15);
+    }
+    .ndvi-legend-labels {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 4px;
+      color: #333;
+    }
+    .ndvi-legend-extremes {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 4px;
+      color: #333;
+      font-size: 11px;
+    }
   </style>
 </head>
 
@@ -120,15 +162,31 @@
     <canvas id="ndviChart" width="550" height="250"></canvas>
   </div>
 
+  <!-- NDVI crop-stress legend (visible when NDVI layer is shown) -->
+  <div id="ndviLegend" class="ndvi-legend">
+    <div class="ndvi-legend-title">Crop Stress (NDVI)</div>
+    <div class="ndvi-gradient"></div>
+    <div class="ndvi-legend-labels">
+      <span id="ndviMin">-1.0</span>
+      <span id="ndviMid">0.0</span>
+      <span id="ndviMax">1.0</span>
+    </div>
+    <div class="ndvi-legend-extremes">
+      <span>High stress (low NDVI)</span>
+      <span>Low stress (high NDVI)</span>
+    </div>
+  </div>
+
   <script>
     // Config
     const COLLECTION = "sentinel-2-l2a";
     const ITEM_BASE = "https://planetarycomputer.microsoft.com/api/data/v1/item/tilejson.json";
 
-    function buildItemUrls(itemId, bbox) {
+    function buildItemUrls(itemId, bbox, rescaleStr) {
       const bboxParam = bbox && bbox.length === 4 ? `&bbox=${bbox.join(',')}` : '';
       const trueUrl = `${ITEM_BASE}?collection=${encodeURIComponent(COLLECTION)}&item=${encodeURIComponent(itemId)}&assets=visual&asset_bidx=visual%7C1%2C2%2C3&nodata=0&format=png${bboxParam}`;
-      const ndviUrl = `${ITEM_BASE}?collection=${encodeURIComponent(COLLECTION)}&item=${encodeURIComponent(itemId)}&expression=${encodeURIComponent('(B08-B04)/(B08+B04)')}&rescale=-1,1&colormap_name=rdylgn&asset_as_band=true${bboxParam}`;
+      const rescale = rescaleStr || '-1,1';
+      const ndviUrl = `${ITEM_BASE}?collection=${encodeURIComponent(COLLECTION)}&item=${encodeURIComponent(itemId)}&expression=${encodeURIComponent('(B08-B04)/(B08+B04)')}&rescale=${encodeURIComponent(rescale)}&colormap_name=rdylgn&asset_as_band=true${bboxParam}`;
       return { trueUrl, ndviUrl };
     }
 
@@ -242,6 +300,80 @@
       updateAoiClip();
     }
 
+    function setLegendVisible(visible) {
+      const el = document.getElementById('ndviLegend');
+      if (!el) return;
+      el.style.display = visible ? 'block' : 'none';
+    }
+
+    function updateLegendScale(minVal, maxVal) {
+      const fmt = (v) => (Math.abs(v) >= 1 ? v.toFixed(1) : v.toFixed(2));
+      const minEl = document.getElementById('ndviMin');
+      const midEl = document.getElementById('ndviMid');
+      const maxEl = document.getElementById('ndviMax');
+      if (minEl) minEl.textContent = fmt(minVal);
+      if (maxEl) maxEl.textContent = fmt(maxVal);
+      const mid = (minVal + maxVal) / 2;
+      if (midEl) midEl.textContent = fmt(mid);
+    }
+
+    function clamp01Range(minVal, maxVal) {
+      let a = Math.max(-1, Math.min(1, Number(minVal)));
+      let b = Math.max(-1, Math.min(1, Number(maxVal)));
+      if (!Number.isFinite(a) || !Number.isFinite(b)) return [-1, 1];
+      if (a === b) { a = a - 0.01; b = b + 0.01; }
+      if (a > b) [a, b] = [b, a];
+      return [a, b];
+    }
+
+    async function fetchNdviStats(itemId, geometry) {
+      const params = new URLSearchParams();
+      params.set('collection', COLLECTION);
+      params.set('item', itemId);
+      params.set('expression', '(B08-B04)/(B08+B04)');
+      params.set('asset_as_band', 'true');
+      params.set('rescale', '-1,1');
+      if (geometry) params.set('geometry', JSON.stringify(geometry));
+      const url = `${STAT_BASE}?${params.toString()}`;
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(`Stats failed ${r.status}`);
+      const json = await r.json();
+      const keys = Object.keys(json || {});
+      let node = null;
+      if (keys.length) node = json[keys[0]];
+      if (!node && json && json.statistics) node = json;
+      const stats = node && node.statistics ? node.statistics : node || {};
+      const p2 = Number(stats.percentile_2 ?? stats['2%']);
+      const p98 = Number(stats.percentile_98 ?? stats['98%']);
+      const min = Number(stats.min);
+      const max = Number(stats.max);
+      return { p2, p98, min, max };
+    }
+
+    function pickRescale(stats) {
+      if (!stats) return [-1, 1];
+      let a = stats.p2, b = stats.p98;
+      if (Number.isFinite(a) && Number.isFinite(b) && a < b) return clamp01Range(a, b);
+      a = stats.min; b = stats.max;
+      if (Number.isFinite(a) && Number.isFinite(b) && a < b) return clamp01Range(a, b);
+      return [-1, 1];
+    }
+
+    function buildCurrentAoiGeometry() {
+      if (aoiRingLatLng && aoiRingLatLng.length) {
+        const coords = aoiRingLatLng.map(ll => [ll.lng, ll.lat]);
+        const first = coords[0];
+        const last = coords[coords.length - 1];
+        if (first[0] !== last[0] || first[1] !== last[1]) coords.push(first);
+        return { type: 'Polygon', coordinates: [coords] };
+      }
+      if (cropBounds) {
+        const sw = cropBounds.getSouthWest(); const ne = cropBounds.getNorthEast();
+        return { type: 'Polygon', coordinates: [[[sw.lng, sw.lat], [ne.lng, sw.lat], [ne.lng, ne.lat], [sw.lng, ne.lat], [sw.lng, sw.lat]]] };
+      }
+      return null;
+    }
+
     function setToggleEnabled(enabled) {
       document.getElementById('btnToggle').disabled = !enabled;
     }
@@ -260,6 +392,7 @@
       ndviLayer = null;
       hasScene = false;
       setToggleEnabled(false);
+      setLegendVisible(false);
 
       // Clear info panel
       const info = document.getElementById('info');
@@ -315,7 +448,19 @@
 
     async function setLayersForItem(itemId, bbox, meta) {
       didFit = false;
-      const { trueUrl, ndviUrl } = buildItemUrls(itemId, bbox);
+      // Compute dynamic NDVI rescale over AOI
+      let rescaleStr = '-1,1';
+      try {
+        const geom = buildCurrentAoiGeometry();
+        const stats = await fetchNdviStats(itemId, geom);
+        const [rmin, rmax] = pickRescale(stats);
+        rescaleStr = `${rmin},${rmax}`;
+        updateLegendScale(rmin, rmax);
+      } catch (e) {
+        console.warn('NDVI dynamic rescale failed; using default', e);
+        updateLegendScale(-1, 1);
+      }
+      const { trueUrl, ndviUrl } = buildItemUrls(itemId, bbox, rescaleStr);
       const [tjTrue, tjNdvi] = await Promise.all([getTileJSON(trueUrl), getTileJSON(ndviUrl)]);
 
       showOnly(null);
@@ -323,6 +468,7 @@
       ndviLayer = addFromTileJSON(tjNdvi, { opacity: 0.9 });
       showOnly(ndviLayer); // NDVI by default
       updateAoiClip();
+      setLegendVisible(true);
 
       hasScene = true;
       setToggleEnabled(true);
@@ -588,6 +734,7 @@
         if (!trueLayer || !ndviLayer) return;
         showingNdvi = !showingNdvi;
         showOnly(showingNdvi ? ndviLayer : trueLayer);
+        setLegendVisible(showingNdvi);
       };
 
       const btnTS = document.getElementById('btnExportTS');
@@ -630,6 +777,8 @@
       map.setView([15.4, 44.2], 10);
       // keep clip in sync with map movements
       ['move', 'zoom', 'zoomend', 'resize', 'viewreset'].forEach(ev => map.on(ev, updateAoiClip));
+      // Ensure legend hidden initially
+      setLegendVisible(false);
     })().catch(err => { console.error(err); alert(err.message || err); });
   </script>
 </body>
