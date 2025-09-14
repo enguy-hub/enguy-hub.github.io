@@ -9,6 +9,8 @@
   <!-- Leaflet.draw for bbox selection -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
   <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+  <!-- Chart.js for time series plot -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <style>
     html,
     body,
@@ -52,7 +54,7 @@
       position: absolute;
       z-index: 1000;
       right: 10px;
-      bottom: 10px;
+      bottom: 70px;
       background: #fff;
       padding: 8px 10px;
       border-radius: 8px;
@@ -61,32 +63,37 @@
       min-width: 220px;
       display: none;
     }
+
+    .left-panel {
+      position: absolute;
+      z-index: 1000;
+      left: 10px;
+      top: 200px;
+      background: #fff;
+      padding: 12px 14px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, .15);
+      font: 13px system-ui, sans-serif;
+      width: 550px;
+      max-height: 30%;
+      overflow: auto;
+      display: none;
+    }
   </style>
 </head>
 
 <body>
   <div id="map"></div>
   <div class="toolbar">
-    <button id="btnTrue" disabled>Show True Color</button><br />
-    <button id="btnNDVI" disabled>Show NDVI</button>
-    <hr />
-    <label for="cloudMax"><strong>Max Cloud</strong>: <span id="cloudMaxLabel">100%</span></label><br />
-    <input id="cloudMax" type="range" min="0" max="100" step="1" value="100" style="width:190px" />
-    <br />
-    <label><strong>Date Range</strong> (optional)</label><br />
-    <input id="dateStart" type="date" /> — <input id="dateEnd" type="date" />
-    <div style="margin-top:4px; font-size:12px; color:#555">or use recent window:</div>
-    <select id="recentDays" style="width:190px">
-      <option value="30">Last 30 days</option>
-      <option value="90" selected>Last 90 days</option>
-      <option value="180">Last 180 days</option>
-      <option value="365">Last 365 days</option>
-    </select>
-    <br />
-    <button id="btnSearch">Search In Box</button>
+    <button id="btnToggle" disabled>Toggle NDVI / RGB</button><br />
+    <button id="btnExportAOI" style="margin-top:6px">Export AOI (GeoJSON)</button>
   </div>
   <div id="busy" class="busy">Searching best scene…</div>
   <div id="info" class="info-panel"></div>
+  <div id="leftPanel" class="left-panel">
+    <div style="font-weight:600; margin-bottom:6px">NDVI Time Series (AOI mean)</div>
+    <canvas id="ndviChart" width="550" height="250"></canvas>
+  </div>
 
   <script>
     // Config
@@ -118,6 +125,10 @@
     // State
     let trueLayer = null, ndviLayer = null, didFit = false;
     let cropBounds = null, drawnBox = null, hasScene = false;
+    let aoiPaneName = 'aoiPane';
+    let aoiRingLatLng = null; // polygon ring for clipping
+    let showingNdvi = true;
+    let ndviChart = null;
     let CURRENT_ID = null; // string
     let CURRENT_META = null; // { id, cloud, datetime }
 
@@ -129,12 +140,22 @@
       return tj;
     }
 
+    function ensureAoiPane() {
+      if (!map.getPane(aoiPaneName)) {
+        map.createPane(aoiPaneName);
+        const pane = map.getPane(aoiPaneName);
+        pane.style.zIndex = 350; // above basemap
+      }
+    }
+
     function addFromTileJSON(tj, opts = {}) {
+      ensureAoiPane();
       const layer = L.tileLayer(tj.tiles[0], {
         attribution: tj.attribution || 'Microsoft Planetary Computer, Copernicus',
         minZoom: tj.minzoom ?? undefined,
         maxZoom: tj.maxzoom ?? undefined,
         bounds: cropBounds ?? undefined,
+        pane: aoiPaneName,
         ...opts
       });
       if (!didFit) {
@@ -150,14 +171,53 @@
       return layer;
     }
 
+    // Helpers and clip function to support polygon AOIs
+    function latLngsFromRectangle(layer) {
+      const b = layer.getBounds();
+      const sw = b.getSouthWest();
+      const ne = b.getNorthEast();
+      const nw = L.latLng(ne.lat, sw.lng);
+      const se = L.latLng(sw.lat, ne.lng);
+      return [sw, se, ne, nw];
+    }
+
+    function ringFromLayer(layer) {
+      if (layer instanceof L.Rectangle) return latLngsFromRectangle(layer);
+      if (layer instanceof L.Polygon) {
+        const rings = layer.getLatLngs();
+        const outer = Array.isArray(rings) ? (Array.isArray(rings[0]) ? rings[0] : rings) : [];
+        return outer.map(ll => L.latLng(ll.lat, ll.lng));
+      }
+      return null;
+    }
+
+    function toGeoJSONPolygon(ring) {
+      if (!ring || !ring.length) return null;
+      const coords = ring.map(ll => [ll.lng, ll.lat]);
+      const first = coords[0];
+      const last = coords[coords.length - 1];
+      if (first[0] !== last[0] || first[1] !== last[1]) coords.push(first);
+      return { type: 'Polygon', coordinates: [coords] };
+    }
+
+    function updateAoiClip() {
+      const pane = map.getPane(aoiPaneName);
+      if (!pane) return;
+      if (!aoiRingLatLng || !aoiRingLatLng.length) { pane.style.clipPath = ''; pane.style.webkitClipPath = ''; return; }
+      const pts = aoiRingLatLng.map(ll => map.latLngToLayerPoint(ll));
+      const poly = 'polygon(' + pts.map(p => `${p.x}px ${p.y}px`).join(',') + ')';
+      pane.style.clipPath = poly;
+      pane.style.webkitClipPath = poly;
+    }
+
     function showOnly(layerToShow) {
       [trueLayer, ndviLayer].forEach(l => { if (l && map.hasLayer(l)) map.removeLayer(l); });
       if (layerToShow) layerToShow.addTo(map);
+      updateAoiClip();
     }
 
-    function setLayerToggleEnabled(enabled) {
-      document.getElementById('btnTrue').disabled = !enabled;
-      document.getElementById('btnNDVI').disabled = !enabled;
+    function setToggleEnabled(enabled) {
+      document.getElementById('btnToggle').disabled = !enabled;
     }
 
     function formatDate(iso) {
@@ -170,7 +230,7 @@
       if (!meta) { panel.style.display = 'none'; panel.innerHTML = ''; return; }
       const cloudStr = typeof meta.cloud === 'number' ? `${meta.cloud.toFixed(1)}%` : 'n/a';
       panel.innerHTML = `
-          <div><strong>Best Scene</strong></div>
+          <div><strong>Displaying | Least Cloud Cover S2 Scene</strong></div>
           <div style="margin-top:6px">
             <div style="word-break: break-all">${meta.id}</div>
             <div><strong>Date:</strong> ${formatDate(meta.datetime)}</div>
@@ -188,58 +248,44 @@
       trueLayer = addFromTileJSON(tjTrue);
       ndviLayer = addFromTileJSON(tjNdvi, { opacity: 0.9 });
       showOnly(ndviLayer); // NDVI by default
+      updateAoiClip();
 
       hasScene = true;
-      setLayerToggleEnabled(true);
+      setToggleEnabled(true);
       updateInfo(meta || CURRENT_META);
+      // Update NDVI time series over all scenes in last 6 months
+      try { await updateNdviTimeseriesAll(); } catch (e) { console.warn('NDVI timeseries update failed', e); }
     }
 
     function setBusy(isBusy) {
       const el = document.getElementById('busy');
       el.style.display = isBusy ? 'block' : 'none';
-      document.getElementById('btnTrue').disabled = isBusy || !hasScene;
-      document.getElementById('btnNDVI').disabled = isBusy || !hasScene;
+      document.getElementById('btnToggle').disabled = isBusy || !hasScene;
     }
 
     function getSearchParams() {
-      const maxCloud = Number(document.getElementById('cloudMax').value);
-      const startStr = document.getElementById('dateStart').value;
-      const endStr = document.getElementById('dateEnd').value;
-      const recentSel = Number(document.getElementById('recentDays').value || RECENT_DAYS);
-      let startIso, endIso;
-      if (startStr || endStr) {
-        const now = new Date();
-        const today = now.toISOString().slice(0, 10);
-        const filledStart = startStr || today;
-        const filledEnd = endStr || today;
-        startIso = `${filledStart}T00:00:00Z`;
-        endIso = `${filledEnd}T23:59:59Z`;
-        if (new Date(startIso) > new Date(endIso)) {
-          throw new Error('Start date must be before end date');
-        }
-      } else {
-        const now = new Date();
-        const start = new Date(now.getTime() - recentSel * 24 * 3600 * 1000);
-        startIso = start.toISOString();
-        endIso = now.toISOString();
-      }
-      RECENT_DAYS = recentSel;
-      return { maxCloud, startIso, endIso };
+      const now = new Date();
+      const sixMonthsMs = 183 * 24 * 3600 * 1000; // ~6 months
+      const start = new Date(now.getTime() - sixMonthsMs);
+      return { startIso: start.toISOString(), endIso: now.toISOString() };
     }
 
-    async function searchBestLeastCloud(bbox) {
-      const { maxCloud, startIso, endIso } = getSearchParams();
+    async function searchBestLeastCloud(aoi) {
+      const { startIso, endIso } = getSearchParams();
       const url = 'https://planetarycomputer.microsoft.com/api/stac/v1/search';
+      const where = aoi && aoi.intersects
+        ? { intersects: aoi.intersects }
+        : (aoi && aoi.bbox ? { bbox: aoi.bbox } : {});
       const body = {
         collections: [COLLECTION],
-        bbox,
+        ...where,
         limit: 1,
         datetime: `${startIso}/${endIso}`,
         sortby: [
           { field: 'properties.eo:cloud_cover', direction: 'asc' },
           { field: 'properties.datetime', direction: 'desc' }
         ],
-        query: maxCloud < 100 ? { 'eo:cloud_cover': { lte: maxCloud } } : undefined
+        // No explicit cloud threshold; just sort by least cloud
       };
       const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       if (!r.ok) throw new Error(`STAC search failed ${r.status}`);
@@ -247,6 +293,98 @@
       const feat = (json.features || [])[0];
       if (!feat) throw new Error('No Sentinel-2 items found in bbox');
       return { id: feat.id, cloud: feat.properties?.['eo:cloud_cover'], datetime: feat.properties?.datetime };
+    }
+
+    // ===== NDVI Time Series over AOI (all scenes in last 6 months) =====
+    const STAT_BASE = "https://planetarycomputer.microsoft.com/api/data/v1/item/statistics";
+
+    function formatDateShort(iso) { try { return new Date(iso).toLocaleDateString(); } catch { return iso; } }
+
+    function buildStatsUrl(itemId, geometry) {
+      const params = new URLSearchParams();
+      params.set('collection', COLLECTION);
+      params.set('item', itemId);
+      params.set('expression', '(B08-B04)/(B08+B04)');
+      params.set('asset_as_band', 'true');
+      params.set('rescale', '-1,1');
+      if (geometry) params.set('geometry', JSON.stringify(geometry));
+      return `${STAT_BASE}?${params.toString()}`;
+    }
+
+    function extractMeanFromStats(statsJson) {
+      if (!statsJson || typeof statsJson !== 'object') return null;
+      const keys = Object.keys(statsJson);
+      if (keys.length) {
+        const node = statsJson[keys[0]];
+        if (node) {
+          if (typeof node.mean === 'number') return node.mean;
+          if (node.statistics && typeof node.statistics.mean === 'number') return node.statistics.mean;
+        }
+      }
+      if (statsJson.statistics && typeof statsJson.statistics.mean === 'number') return statsJson.statistics.mean;
+      return null;
+    }
+
+    async function fetchNdviMean(itemId, geometry) {
+      const url = buildStatsUrl(itemId, geometry);
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(`Stats failed ${r.status}`);
+      const json = await r.json();
+      const mean = extractMeanFromStats(json);
+      if (typeof mean !== 'number' || Number.isNaN(mean)) throw new Error('No mean in stats');
+      return mean;
+    }
+
+    async function searchAllScenesForTimeseries(aoi) {
+      const { startIso, endIso } = getSearchParams();
+      const url = 'https://planetarycomputer.microsoft.com/api/stac/v1/search';
+      const where = aoi && aoi.intersects ? { intersects: aoi.intersects } : (aoi && aoi.bbox ? { bbox: aoi.bbox } : {});
+      const body = {
+        collections: [COLLECTION],
+        ...where,
+        limit: 200,
+        datetime: `${startIso}/${endIso}`,
+        sortby: [{ field: 'properties.datetime', direction: 'asc' }]
+      };
+      const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (!r.ok) throw new Error(`STAC search failed ${r.status}`);
+      const json = await r.json();
+      const feats = (json.features || []);
+      return feats.map(f => ({ id: f.id, datetime: f.properties?.datetime }));
+    }
+
+    async function updateNdviTimeseries(metas) {
+      const panel = document.getElementById('leftPanel');
+      const canvas = document.getElementById('ndviChart');
+      if (!Array.isArray(metas) || metas.length === 0) { panel.style.display = 'none'; return; }
+      // Build AOI geometry
+      let geom = null;
+      if (aoiRingLatLng && aoiRingLatLng.length) {
+        const coords = aoiRingLatLng.map(ll => [ll.lng, ll.lat]);
+        const first = coords[0];
+        const last = coords[coords.length - 1];
+        if (first[0] !== last[0] || first[1] !== last[1]) coords.push(first);
+        geom = { type: 'Polygon', coordinates: [coords] };
+      } else if (cropBounds) {
+        const sw = cropBounds.getSouthWest(); const ne = cropBounds.getNorthEast();
+        geom = { type: 'Polygon', coordinates: [[[sw.lng, sw.lat], [ne.lng, sw.lat], [ne.lng, ne.lat], [sw.lng, ne.lat], [sw.lng, sw.lat]]] };
+      }
+      const means = await Promise.all(metas.map(m => fetchNdviMean(m.id, geom).catch(() => null)));
+      const labels = metas.map(m => formatDateShort(m.datetime));
+      const data = { labels, datasets: [{ label: 'Mean NDVI', data: means, borderColor: '#43a047', backgroundColor: 'rgba(67,160,71,0.25)', pointBackgroundColor: '#2e7d32', pointRadius: 4, showLine: true, tension: 0.2 }] };
+      const cfg = { type: 'line', data, options: { responsive: false, scales: { y: { suggestedMin: -0.2, suggestedMax: 1.0, title: { display: true, text: 'NDVI' } }, x: { title: { display: true, text: 'Date' } } }, plugins: { legend: { display: false } } } };
+      if (ndviChart) ndviChart.destroy();
+      ndviChart = new Chart(canvas.getContext('2d'), cfg);
+      panel.style.display = 'block';
+    }
+
+    async function updateNdviTimeseriesAll() {
+      const bbox = cropBounds ? bboxFromLatLngBounds(cropBounds) : null;
+      const intersects = toGeoJSONPolygon(aoiRingLatLng);
+      const aoi = intersects ? { intersects, bbox } : (bbox ? { bbox } : null);
+      if (!aoi) return;
+      const metasAll = await searchAllScenesForTimeseries(aoi);
+      await updateNdviTimeseries(metasAll);
     }
 
     function bboxFromLatLngBounds(llb) {
@@ -259,7 +397,8 @@
       const drawControl = new L.Control.Draw({
         position: 'topleft',
         draw: {
-          polygon: false, polyline: false, circle: false, marker: false, circlemarker: false,
+          polygon: { allowIntersection: false, showArea: true, shapeOptions: { color: '#e91e63', fillOpacity: 0.05 } },
+          polyline: false, circle: false, marker: false, circlemarker: false,
           rectangle: { shapeOptions: { color: '#e91e63', fillOpacity: 0.05 } }
         },
         edit: false
@@ -271,9 +410,13 @@
           if (drawnBox) map.removeLayer(drawnBox);
           drawnBox = e.layer.addTo(map);
           cropBounds = drawnBox.getBounds();
+          aoiRingLatLng = ringFromLayer(drawnBox) || null;
+          updateAoiClip();
           const bbox = bboxFromLatLngBounds(cropBounds);
+          const intersects = toGeoJSONPolygon(aoiRingLatLng);
+          const aoi = intersects ? { intersects, bbox } : { bbox };
           setBusy(true);
-          const meta = await searchBestLeastCloud(bbox);
+          const meta = await searchBestLeastCloud(aoi);
           CURRENT_ID = meta.id; CURRENT_META = meta;
           await setLayersForItem(CURRENT_ID, bbox, CURRENT_META);
           console.log('Selected item', meta);
@@ -286,27 +429,35 @@
 
     (async () => {
       // Buttons
-      document.getElementById('btnTrue').onclick = () => showOnly(trueLayer);
-      document.getElementById('btnNDVI').onclick = () => showOnly(ndviLayer);
-      document.getElementById('cloudMax').addEventListener('input', (e) => {
-        document.getElementById('cloudMaxLabel').textContent = `${e.target.value}%`;
-      });
-      document.getElementById('recentDays').addEventListener('change', (e) => {
-        RECENT_DAYS = Number(e.target.value || 90);
-      });
-      document.getElementById('btnSearch').onclick = async () => {
-        if (!drawnBox) { alert('Draw a bounding box first (use the rectangle tool).'); return; }
-        try {
-          setBusy(true);
-          const bbox = bboxFromLatLngBounds(drawnBox.getBounds());
-          const meta = await searchBestLeastCloud(bbox);
-          CURRENT_ID = meta.id; CURRENT_META = meta;
-          await setLayersForItem(CURRENT_ID, bbox, CURRENT_META);
-          console.log('Selected item', meta);
-        } catch (err) {
-          console.error(err);
-          alert(err.message || err);
-        } finally { setBusy(false); }
+      document.getElementById('btnToggle').onclick = () => {
+        if (!trueLayer || !ndviLayer) return;
+        showingNdvi = !showingNdvi;
+        showOnly(showingNdvi ? ndviLayer : trueLayer);
+      };
+
+      // Export AOI (GeoJSON)
+      document.getElementById('btnExportAOI').onclick = () => {
+        if (!drawnBox) { alert('No AOI to export. Draw a rectangle or polygon first.'); return; }
+        const ring = ringFromLayer(drawnBox);
+        const geom = toGeoJSONPolygon(ring);
+        if (!geom) { alert('AOI geometry unavailable.'); return; }
+        const bounds = drawnBox.getBounds();
+        const bbox = [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()];
+        const feature = {
+          type: 'Feature',
+          properties: { name: 'AOI', source: 'best_scene.html' },
+          bbox,
+          geometry: geom
+        };
+        const blob = new Blob([JSON.stringify(feature, null, 2)], { type: 'application/geo+json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'aoi.geojson';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
       };
 
       // Enable drawing a bbox to refine search and clip
@@ -316,15 +467,19 @@
       const camBBox = randomBboxInCamargue();
       cropBounds = L.latLngBounds([camBBox[1], camBBox[0]], [camBBox[3], camBBox[2]]);
       drawnBox = L.rectangle(cropBounds, { color: '#e91e63', weight: 2, fillOpacity: 0.05 }).addTo(map);
+      aoiRingLatLng = latLngsFromRectangle(drawnBox);
       map.fitBounds(cropBounds);
       try {
         setBusy(true);
-        const meta = await searchBestLeastCloud(camBBox);
+        const meta = await searchBestLeastCloud({ bbox: camBBox });
         CURRENT_ID = meta.id; CURRENT_META = meta;
         await setLayersForItem(CURRENT_ID, camBBox, CURRENT_META);
+        await updateNdviTimeseriesAll();
       } catch (err) {
         console.error(err);
       } finally { setBusy(false); }
+      // keep clip in sync with map movements
+      ['move', 'zoom', 'zoomend', 'resize', 'viewreset'].forEach(ev => map.on(ev, updateAoiClip));
     })().catch(err => { console.error(err); alert(err.message || err); });
   </script>
 </body>

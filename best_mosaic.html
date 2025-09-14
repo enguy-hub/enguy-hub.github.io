@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8" />
+    <title>Sentinel2 | Mosaic Best 3 Scenes</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Leaflet.draw for bbox selection -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
+    <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+    <!-- Chart.js for time series plot -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <style>
+        html,
+        body,
+        #map {
+            height: 100%;
+            margin: 0
+        }
+
+        .toolbar {
+            position: absolute;
+            z-index: 1000;
+            top: 10px;
+            right: 10px;
+            /* move to top-right so draw tools (top-left) are visible */
+            left: auto;
+            background: #fff;
+            padding: 8px 10px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, .15);
+            font: 13px system-ui, sans-serif
+        }
+
+        .toolbar button {
+            margin: 2px 0;
+            width: 190px
+        }
+
+        .busy {
+            position: absolute;
+            z-index: 1100;
+            top: 60px;
+            /* nudge below toolbar */
+            right: 10px;
+            background: rgba(0, 0, 0, 0.75);
+            color: #fff;
+            padding: 6px 10px;
+            border-radius: 6px;
+            font: 13px system-ui, sans-serif;
+            display: none;
+        }
+
+        .info-panel {
+            position: absolute;
+            z-index: 1000;
+            right: 10px;
+            bottom: 50px;
+            background: #fff;
+            padding: 8px 10px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, .15);
+            font: 13px system-ui, sans-serif;
+            min-width: 220px;
+            display: none;
+        }
+
+        .left-panel {
+            position: absolute;
+            z-index: 1000;
+            left: 10px;
+            top: 200px;
+            background: #fff;
+            padding: 12px 14px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, .15);
+            font: 13px system-ui, sans-serif;
+            width: 550px;
+            max-height: 30%;
+            overflow: auto;
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+    <div class="toolbar">
+        <button id="btnToggle" disabled>Toggle NDVI / RGB</button><br />
+        <button id="btnExportAOI" style="margin-top:6px">Export AOI (GeoJSON)</button>
+    </div>
+    <div id="busy" class="busy">Searching best scene ...</div>
+    <div id="info" class="info-panel"></div>
+    <div id="leftPanel" class="left-panel">
+        <div style="font-weight:600; margin-bottom:6px">NDVI Time Series (AOI mean)</div>
+        <canvas id="ndviChart" width="550" height="250"></canvas>
+    </div>
+
+    <script>
+        // === Collection and initial item (defaults) ===
+        const COLLECTION = "sentinel-2-l2a";
+        let REF_ITEM = "S2C_MSIL2A_20250907T024601_R132_T50SQG_20250907T055515";
+
+        // TileJSON endpoint (MPC TiTiler) for a single item
+        const ITEM_BASE = "https://planetarycomputer.microsoft.com/api/data/v1/item/tilejson.json";
+
+        function buildItemUrls(itemId, bbox) {
+            const bboxParam = bbox && bbox.length === 4 ? `&bbox=${bbox.join(',')}` : '';
+            const trueUrl = `${ITEM_BASE}?collection=${encodeURIComponent(COLLECTION)}&item=${encodeURIComponent(itemId)}&assets=visual&asset_bidx=visual%7C1%2C2%2C3&nodata=0&format=png${bboxParam}`;
+            const ndviUrl = `${ITEM_BASE}?collection=${encodeURIComponent(COLLECTION)}&item=${encodeURIComponent(itemId)}&expression=${encodeURIComponent("(B08-B04)/(B08+B04)")}&rescale=-1,1&colormap_name=rdylgn&asset_as_band=true${bboxParam}`;
+            return { trueUrl, ndviUrl };
+        }
+
+        function randomBboxInCamargue() {
+            // Rough extent of Camargue region (lon/lat)
+            const W = 4.2, E = 4.8, S = 43.3, N = 43.6;
+            // Random center within margins to keep box inside
+            const width = 0.18, height = 0.12; // ~20x13 km
+            const cx = W + 0.1 + Math.random() * (E - W - 0.2);
+            const cy = S + 0.06 + Math.random() * (N - S - 0.12);
+            const w = cx - width / 2;
+            const e = cx + width / 2;
+            const s = cy - height / 2;
+            const n = cy + height / 2;
+            return [w, s, e, n];
+        }
+
+        const map = L.map("map").setView([0, 0], 2);
+        L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+            { attribution: "© Carto Positron (Light Gray)" }).addTo(map);
+
+        let trueLayer = null, ndviLayer = null, didFit = false;
+        let cropBounds = null; // Leaflet LatLngBounds when bbox is set
+        let drawnBox = null;   // The drawn AOI layer (rectangle or polygon)
+        let aoiPaneName = 'aoiPane';
+        let aoiRingLatLng = null; // polygon ring for clipping
+        let showingNdvi = true;
+        let ndviChart = null;
+        let CURRENT_META = null; // { id, cloud, datetime } or array
+        let hasScene = false;
+        let CURRENT_IDS = null;  // array of item ids when mosaic
+
+        async function getTileJSON(url) {
+            const r = await fetch(url);
+            if (!r.ok) throw new Error(`TileJSON failed ${r.status}`);
+            const tj = await r.json();
+            if (!tj.tiles || !tj.tiles[0]) throw new Error("No 'tiles' in TileJSON");
+            return tj;
+        }
+
+        function ensureAoiPane() {
+            if (!map.getPane(aoiPaneName)) {
+                map.createPane(aoiPaneName);
+                const pane = map.getPane(aoiPaneName);
+                pane.style.zIndex = 350; // above basemap tilePane
+            }
+        }
+
+        function addFromTileJSON(tj, opts = {}) {
+            ensureAoiPane();
+            const layer = L.tileLayer(tj.tiles[0], {
+                attribution: tj.attribution || "Microsoft Planetary Computer, Copernicus",
+                minZoom: tj.minzoom ?? undefined,
+                maxZoom: tj.maxzoom ?? undefined,
+                bounds: cropBounds ?? undefined,
+                pane: aoiPaneName,
+                ...opts
+            });
+            if (!didFit) {
+                if (cropBounds) {
+                    map.fitBounds(cropBounds, { maxZoom: tj.maxzoom ?? 12 });
+                    didFit = true;
+                } else if (Array.isArray(tj.bounds) && tj.bounds.length === 4) {
+                    const [w, s, e, n] = tj.bounds;
+                    map.fitBounds([[s, w], [n, e]], { maxZoom: tj.maxzoom ?? 12 });
+                    didFit = true;
+                }
+            }
+            return layer;
+        }
+
+        // Helpers and clip function to support polygon AOIs
+        function latLngsFromRectangle(layer) {
+            const b = layer.getBounds();
+            const sw = b.getSouthWest();
+            const ne = b.getNorthEast();
+            const nw = L.latLng(ne.lat, sw.lng);
+            const se = L.latLng(sw.lat, ne.lng);
+            return [sw, se, ne, nw];
+        }
+
+        function ringFromLayer(layer) {
+            if (layer instanceof L.Rectangle) return latLngsFromRectangle(layer);
+            if (layer instanceof L.Polygon) {
+                const rings = layer.getLatLngs();
+                const outer = Array.isArray(rings) ? (Array.isArray(rings[0]) ? rings[0] : rings) : [];
+                return outer.map(ll => L.latLng(ll.lat, ll.lng));
+            }
+            return null;
+        }
+
+        function toGeoJSONPolygon(ring) {
+            if (!ring || !ring.length) return null;
+            const coords = ring.map(ll => [ll.lng, ll.lat]);
+            const first = coords[0];
+            const last = coords[coords.length - 1];
+            if (first[0] !== last[0] || first[1] !== last[1]) coords.push(first);
+            return { type: 'Polygon', coordinates: [coords] };
+        }
+
+        function updateAoiClip() {
+            const pane = map.getPane(aoiPaneName);
+            if (!pane) return;
+            if (!aoiRingLatLng || !aoiRingLatLng.length) { pane.style.clipPath = ''; pane.style.webkitClipPath = ''; return; }
+            const pts = aoiRingLatLng.map(ll => map.latLngToLayerPoint(ll));
+            const poly = 'polygon(' + pts.map(p => `${p.x}px ${p.y}px`).join(',') + ')';
+            pane.style.clipPath = poly;
+            pane.style.webkitClipPath = poly;
+        }
+
+        function showOnly(layerToShow) {
+            [trueLayer, ndviLayer].forEach(l => { if (l && map.hasLayer(l)) map.removeLayer(l); });
+            if (layerToShow) layerToShow.addTo(map);
+            updateAoiClip();
+        }
+
+        function setToggleEnabled(enabled) {
+            document.getElementById('btnToggle').disabled = !enabled;
+        }
+
+        function formatDate(iso) {
+            if (!iso) return '';
+            try { return new Date(iso).toLocaleString(); } catch { return iso; }
+        }
+
+        function updateInfo(meta) {
+            const panel = document.getElementById('info');
+            if (!meta) { panel.style.display = 'none'; panel.innerHTML = ''; return; }
+            const metas = Array.isArray(meta) ? meta : [meta];
+            const rows = metas.map((m, i) => {
+                const cloudStr = typeof m.cloud === 'number' ? `${m.cloud.toFixed(1)}%` : 'n/a';
+                return `<div style="margin-top:6px"><strong>#${i + 1}</strong><br/><div style=\"word-break: break-all\">${m.id}</div><div><strong>Date:</strong> ${formatDate(m.datetime)}</div><div><strong>Cloud:</strong> ${cloudStr}</div></div>`;
+            }).join('');
+            panel.innerHTML = `
+                <div><strong>Displaying | Mosaic of the 3 Least Cloud Cover S2 Scenes</strong></div>
+                ${rows}
+            `;
+            panel.style.display = 'block';
+        }
+
+        // ===== NDVI Time Series over AOI =====
+        const STAT_BASE = "https://planetarycomputer.microsoft.com/api/data/v1/item/statistics";
+
+        function formatDateShort(iso) {
+            try { return new Date(iso).toLocaleDateString(); } catch { return iso; }
+        }
+
+        function buildStatsUrl(itemId, geometry) {
+            const params = new URLSearchParams();
+            params.set('collection', COLLECTION);
+            params.set('item', itemId);
+            params.set('expression', '(B08-B04)/(B08+B04)');
+            params.set('asset_as_band', 'true');
+            params.set('rescale', '-1,1');
+            if (geometry) params.set('geometry', JSON.stringify(geometry));
+            return `${STAT_BASE}?${params.toString()}`;
+        }
+
+        function extractMeanFromStats(statsJson) {
+            if (!statsJson || typeof statsJson !== 'object') return null;
+            const keys = Object.keys(statsJson);
+            if (keys.length) {
+                const node = statsJson[keys[0]];
+                if (node) {
+                    if (typeof node.mean === 'number') return node.mean;
+                    if (node.statistics && typeof node.statistics.mean === 'number') return node.statistics.mean;
+                }
+            }
+            if (statsJson.statistics && typeof statsJson.statistics.mean === 'number') return statsJson.statistics.mean;
+            return null;
+        }
+
+        async function fetchNdviMean(itemId, geometry) {
+            const url = buildStatsUrl(itemId, geometry);
+            const r = await fetch(url);
+            if (!r.ok) throw new Error(`Stats failed ${r.status}`);
+            const json = await r.json();
+            const mean = extractMeanFromStats(json);
+            if (typeof mean !== 'number' || Number.isNaN(mean)) throw new Error('No mean in stats');
+            return mean;
+        }
+
+        async function updateNdviTimeseries(metas) {
+            const panel = document.getElementById('leftPanel');
+            const canvas = document.getElementById('ndviChart');
+            if (!Array.isArray(metas) || metas.length === 0) { panel.style.display = 'none'; return; }
+            // Build polygon geometry from AOI
+            let geom = null;
+            if (aoiRingLatLng && aoiRingLatLng.length) {
+                const coords = aoiRingLatLng.map(ll => [ll.lng, ll.lat]);
+                const first = coords[0];
+                const last = coords[coords.length - 1];
+                if (first[0] !== last[0] || first[1] !== last[1]) coords.push(first);
+                geom = { type: 'Polygon', coordinates: [coords] };
+            } else if (cropBounds) {
+                const sw = cropBounds.getSouthWest(); const ne = cropBounds.getNorthEast();
+                geom = { type: 'Polygon', coordinates: [[[sw.lng, sw.lat], [ne.lng, sw.lat], [ne.lng, ne.lat], [sw.lng, ne.lat], [sw.lng, sw.lat]]] };
+            }
+
+            const means = await Promise.all(metas.map(m => fetchNdviMean(m.id, geom).catch(() => null)));
+            const labels = metas.map(m => formatDateShort(m.datetime));
+
+            const data = { labels, datasets: [{ label: 'Mean NDVI', data: means, borderColor: '#43a047', backgroundColor: 'rgba(67,160,71,0.25)', pointBackgroundColor: '#2e7d32', pointRadius: 4, showLine: true, tension: 0.2 }] };
+            const cfg = { type: 'line', data, options: { responsive: false, scales: { y: { suggestedMin: -0.2, suggestedMax: 1.0, title: { display: true, text: 'NDVI' } }, x: { title: { display: true, text: 'Date' } } }, plugins: { legend: { display: false } } } };
+            if (ndviChart) ndviChart.destroy();
+            ndviChart = new Chart(canvas.getContext('2d'), cfg);
+            panel.style.display = 'block';
+        }
+
+        async function searchAllScenesForTimeseries(aoi) {
+            const { startIso, endIso } = getSearchParams();
+            const url = "https://planetarycomputer.microsoft.com/api/stac/v1/search";
+            const where = aoi && aoi.intersects
+                ? { intersects: aoi.intersects }
+                : (aoi && aoi.bbox ? { bbox: aoi.bbox } : {});
+            const body = {
+                collections: [COLLECTION],
+                ...where,
+                limit: 200,
+                datetime: `${startIso}/${endIso}`,
+                sortby: [{ field: "properties.datetime", direction: "asc" }]
+            };
+            const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+            if (!r.ok) throw new Error(`STAC search failed ${r.status}`);
+            const json = await r.json();
+            const feats = (json.features || []);
+            return feats.map(f => ({ id: f.id, datetime: f.properties?.datetime }));
+        }
+
+        async function updateNdviTimeseriesAll() {
+            const bbox = cropBounds ? bboxFromLatLngBounds(cropBounds) : null;
+            const intersects = toGeoJSONPolygon(aoiRingLatLng);
+            const aoi = intersects ? { intersects, bbox } : (bbox ? { bbox } : null);
+            if (!aoi) return;
+            const metasAll = await searchAllScenesForTimeseries(aoi);
+            await updateNdviTimeseries(metasAll);
+        }
+
+        async function setLayersForItems(itemIds, bbox, meta) {
+            // reset fit flag so each new item/bbox fits once
+            didFit = false;
+
+            // Fetch TileJSON for each item for both true and NDVI
+            // Maintain order so lower cloud (best) is last and sits on top.
+            const requests = itemIds.map(id => {
+                const { trueUrl, ndviUrl } = buildItemUrls(id, bbox);
+                return Promise.all([getTileJSON(trueUrl), getTileJSON(ndviUrl)]);
+            });
+            const results = await Promise.all(requests);
+
+            // Remove existing layers
+            showOnly(null);
+
+            // Build layer groups by stacking per-item layers
+            const trueLayers = [];
+            const ndviLayers = [];
+            results.forEach(([tjTrue, tjNdvi]) => {
+                trueLayers.push(addFromTileJSON(tjTrue));
+                ndviLayers.push(addFromTileJSON(tjNdvi, { opacity: 0.9 }));
+            });
+            trueLayer = L.layerGroup(trueLayers);
+            ndviLayer = L.layerGroup(ndviLayers);
+            showOnly(ndviLayer); // NDVI by default
+            updateAoiClip();
+
+            hasScene = true;
+            setToggleEnabled(true);
+            updateInfo(meta || CURRENT_META);
+            // Update NDVI time series (all scenes in last 6 months)
+            try {
+                await updateNdviTimeseriesAll();
+            } catch (e) {
+                console.warn('NDVI timeseries update failed', e);
+            }
+        }
+
+        function setBusy(isBusy) {
+            const el = document.getElementById('busy');
+            el.style.display = isBusy ? 'block' : 'none';
+            document.getElementById('btnToggle').disabled = isBusy || !hasScene;
+        }
+
+        function getSearchParams() {
+            const now = new Date();
+            const sixMonthsMs = 183 * 24 * 3600 * 1000; // ~6 months
+            const start = new Date(now.getTime() - sixMonthsMs);
+            return { startIso: start.toISOString(), endIso: now.toISOString() };
+        }
+
+        async function searchLatestLeastCloud(aoi) {
+            const { startIso, endIso } = getSearchParams();
+            const url = "https://planetarycomputer.microsoft.com/api/stac/v1/search";
+            const where = aoi && aoi.intersects
+                ? { intersects: aoi.intersects }
+                : (aoi && aoi.bbox ? { bbox: aoi.bbox } : {});
+            const body = {
+                collections: [COLLECTION],
+                ...where,
+                limit: 3,
+                datetime: `${startIso}/${endIso}`,
+                sortby: [
+                    { field: "properties.eo:cloud_cover", direction: "asc" },
+                    { field: "properties.datetime", direction: "desc" }
+                ],
+                // No explicit cloud threshold; just sort by least cloud
+            };
+            const r = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            if (!r.ok) throw new Error(`STAC search failed ${r.status}`);
+            const json = await r.json();
+            const feats = (json.features || []).slice(0, 3);
+            if (!feats.length) throw new Error('No Sentinel-2 items found in bbox');
+            const metas = feats.map(f => ({ id: f.id, cloud: f.properties?.["eo:cloud_cover"], datetime: f.properties?.datetime }));
+            return metas;
+        }
+
+        function bboxFromLatLngBounds(llb) {
+            const sw = llb.getSouthWest();
+            const ne = llb.getNorthEast();
+            return [sw.lng, sw.lat, ne.lng, ne.lat]; // [w,s,e,n]
+        }
+
+        function drawInit() {
+            const drawControl = new L.Control.Draw({
+                position: 'topleft',
+                draw: {
+                    polygon: { allowIntersection: false, showArea: true, shapeOptions: { color: '#e91e63', fillOpacity: 0.05 } },
+                    polyline: false,
+                    circle: false,
+                    marker: false,
+                    circlemarker: false,
+                    rectangle: { shapeOptions: { color: '#e91e63', fillOpacity: 0.05 } }
+                },
+                edit: false
+            });
+            map.addControl(drawControl);
+
+            map.on(L.Draw.Event.CREATED, async (e) => {
+                try {
+                    // Remove previous AOI
+                    if (drawnBox) map.removeLayer(drawnBox);
+                    drawnBox = e.layer.addTo(map);
+                    cropBounds = drawnBox.getBounds();
+                    aoiRingLatLng = ringFromLayer(drawnBox) || null;
+                    updateAoiClip();
+                    const bbox = bboxFromLatLngBounds(cropBounds);
+                    const intersects = toGeoJSONPolygon(aoiRingLatLng);
+                    const aoi = intersects ? { intersects, bbox } : { bbox };
+
+                    setBusy(true);
+                    const metas = await searchLatestLeastCloud(aoi);
+                    CURRENT_IDS = metas.map(m => m.id);
+                    CURRENT_META = metas;
+                    await setLayersForItems(CURRENT_IDS, bbox, CURRENT_META);
+                    console.log('Selected items', metas);
+                } catch (err) {
+                    console.error(err);
+                    alert(err.message || err);
+                } finally {
+                    setBusy(false);
+                }
+            });
+        }
+
+        (async () => {
+            // Buttons
+            document.getElementById("btnToggle").onclick = () => {
+                if (!trueLayer || !ndviLayer) return;
+                showingNdvi = !showingNdvi;
+                showOnly(showingNdvi ? ndviLayer : trueLayer);
+            };
+
+            // Export AOI (GeoJSON)
+            document.getElementById('btnExportAOI').onclick = () => {
+                if (!drawnBox) { alert('No AOI to export. Draw a rectangle or polygon first.'); return; }
+                const ring = ringFromLayer(drawnBox);
+                const geom = toGeoJSONPolygon(ring);
+                if (!geom) { alert('AOI geometry unavailable.'); return; }
+                const b = drawnBox.getBounds();
+                const bbox = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
+                const feature = {
+                    type: 'Feature',
+                    properties: { name: 'AOI', source: 'best_3_scenes_mosaic.html' },
+                    bbox,
+                    geometry: geom
+                };
+                const blob = new Blob([JSON.stringify(feature, null, 2)], { type: 'application/geo+json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'aoi.geojson';
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(url);
+            };
+
+            // Enable drawing a bbox to refine search and clip
+            drawInit();
+
+            // Default: random bbox in Camargue, auto-search mosaic and show NDVI
+            const camBBox = randomBboxInCamargue();
+            cropBounds = L.latLngBounds([camBBox[1], camBBox[0]], [camBBox[3], camBBox[2]]);
+            drawnBox = L.rectangle(cropBounds, { color: '#e91e63', weight: 2, fillOpacity: 0.05 }).addTo(map);
+            aoiRingLatLng = latLngsFromRectangle(drawnBox);
+            map.fitBounds(cropBounds);
+            try {
+                setBusy(true);
+                const metas = await searchLatestLeastCloud({ bbox: camBBox });
+                CURRENT_IDS = metas.map(m => m.id);
+                CURRENT_META = metas;
+                await setLayersForItems(CURRENT_IDS, camBBox, CURRENT_META);
+                await updateNdviTimeseriesAll();
+            } catch (err) {
+                console.error(err);
+            } finally {
+                setBusy(false);
+            }
+            // keep clip in sync with map movements
+            ['move', 'zoom', 'zoomend', 'resize', 'viewreset'].forEach(ev => map.on(ev, updateAoiClip));
+        })().catch(err => {
+            console.error(err);
+            alert(err.message || err);
+        });
+    </script>
+</body>
+
+</html>
