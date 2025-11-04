@@ -1,0 +1,96 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { getCollection } from "astro:content";
+
+const papers = (await getCollection("papers"))
+  .filter((entry) => !entry.data.draft)
+  .sort((a, b) => b.data.publishedAt.getTime() - a.data.publishedAt.getTime());
+
+const categorizedPapers = Object.entries(
+  papers.reduce((acc, paper) => {
+    const category = paper.data.category ?? "Research";
+    acc[category] = acc[category] ? [...acc[category], paper] : [paper];
+    return acc;
+  }, {}),
+).sort((a, b) => a[0].localeCompare(b[0]));
+---
+
+<BaseLayout
+  title="Research – HiEN"
+  description="Peer-reviewed publications and technical papers."
+>
+  <section class="surface surface--glow">
+    <div class="eyebrow">Research</div>
+    <h1 class="section-title">Browse by discipline</h1>
+  </section>
+
+  {
+    categorizedPapers.map(([category, entries]) => (
+      <section class="surface" key={category}>
+        <h2 class="section-title" style={{ fontSize: "1.6rem" }}>
+          {category}
+        </h2>
+        <div class="card-grid">
+          {entries.map((paper) => {
+            const href = paper.data.link ?? `/papers/${paper.slug}`;
+            return (
+              <article
+                class="surface"
+                style={{
+                  padding: "1.9rem 1.7rem",
+                  borderRadius: "20px",
+                  border: "1px solid var(--border)",
+                  boxShadow: "inset 0 0 24px rgba(18, 43, 34, 0.45)",
+                }}
+              >
+                <a
+                  href={href}
+                  style={{
+                    fontSize: "1.22rem",
+                    fontWeight: 600,
+                    color: "var(--fg)",
+                  }}
+                >
+                  {paper.data.title}
+                </a>
+                <time
+                  dateTime={paper.data.publishedAt.toISOString()}
+                  style={{ color: "var(--fg-muted)", fontSize: "0.88rem" }}
+                >
+                  {paper.data.publishedAt.toLocaleDateString()}
+                </time>
+                {paper.data.venue && (
+                  <p style={{ margin: "0 0 0.4rem", color: "var(--primary)" }}>
+                    {paper.data.venue}
+                  </p>
+                )}
+                <p style={{ margin: 0, color: "var(--fg-muted)" }}>
+                  {paper.data.summary}
+                </p>
+                <div
+                  style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}
+                >
+                  {paper.data.tags.map((tag) => (
+                    <span class="pill" key={tag}>
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      </section>
+    ))
+  }
+
+  {
+    papers.length === 0 && (
+      <section class="surface">
+        <p class="prose" style={{ margin: 0 }}>
+          No publications yet — check back soon.
+        </p>
+      </section>
+    )
+  }
+</BaseLayout>

@@ -1,0 +1,67 @@
+---
+import { getCollection } from 'astro:content';
+import BaseLayout from '../layouts/BaseLayout.astro';
+
+const posts = (await getCollection('blogs'))
+  .filter((entry) => !entry.data.draft)
+  .sort((a, b) => b.data.publishedAt.getTime() - a.data.publishedAt.getTime());
+const categorizedPosts = Object.entries(
+  posts.reduce((acc, post) => {
+    const category = post.data.category ?? post.data.tags?.[0] ?? 'Other';
+    acc[category] = acc[category] ? [...acc[category], post] : [post];
+    return acc;
+  }, {})
+).sort((a, b) => a[0].localeCompare(b[0]));
+
+---
+
+<BaseLayout title="Blogs – HiEN" description="Collected field notes and architecture write-ups.">
+  <section class="surface surface--glow">
+    <div class="eyebrow">Blogs</div>
+    <h1 class="section-title">Browse by theme</h1>
+  </section>
+
+  {categorizedPosts.map(([category, entries]) => (
+    <section class="surface" key={category}>
+      <h2 class="section-title" style={{ fontSize: '1.6rem' }}>{category}</h2>
+      <div class="card-grid">
+        {entries.map((post) => (
+          <article
+            class="surface"
+            style={{
+              padding: '1.9rem 1.7rem',
+              borderRadius: '20px',
+              border: '1px solid var(--border)',
+              boxShadow: 'inset 0 0 24px rgba(18, 43, 34, 0.45)'
+            }}
+          >
+            <a href={`/blogs/${post.slug}`} style={{ fontSize: '1.22rem', fontWeight: 600, color: 'var(--fg)' }}>
+              {post.data.title}
+            </a>
+            <time
+              dateTime={post.data.publishedAt.toISOString()}
+              style={{ color: 'var(--fg-muted)', fontSize: '0.88rem' }}
+            >
+              {post.data.publishedAt.toLocaleDateString()}
+            </time>
+            <p style={{ margin: 0, color: 'var(--fg-muted)' }}>{post.data.summary}</p>
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              {post.data.tags.map((tag) => (
+                <span class="pill" key={tag}>
+                  {tag}
+                </span>
+              ))}
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  ))}
+
+  {posts.length === 0 && (
+    <section class="surface">
+      <p class="prose" style={{ margin: 0 }}>No blog posts yet — check back soon.</p>
+    </section>
+  )}
+
+</BaseLayout>

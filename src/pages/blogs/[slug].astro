@@ -1,0 +1,26 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getCollection } from 'astro:content';
+
+export async function getStaticPaths() {
+  const posts = (await getCollection('blogs')).filter((entry) => !entry.data.draft);
+  return posts.map((post) => ({
+    params: { slug: post.slug },
+    props: { post }
+  }));
+}
+
+const { post } = Astro.props;
+const { Content } = await post.render();
+---
+
+<BaseLayout title={`${post.data.title} – HiEN`} description={post.data.summary}>
+  <article class="surface surface--glow prose" style="font-size:1.05rem;">
+    <div class="eyebrow">Blog</div>
+    <h1>{post.data.title}</h1>
+    <time dateTime={post.data.publishedAt.toISOString()} style={{ color: 'var(--fg-muted)', fontSize: '0.9rem' }}>
+      {post.data.publishedAt.toLocaleDateString()}
+    </time>
+    <Content />
+  </article>
+</BaseLayout>

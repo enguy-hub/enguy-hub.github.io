@@ -1,0 +1,8 @@
+{
+  "apis": {
+    "template-core": "https://api.example.com/core",
+    "template-data": "https://api.example.com/data",
+    "template-experiments": "https://api.example.com/experiments"
+  },
+  "notes": "Update API endpoints here to avoid rebuilding the site."
+}

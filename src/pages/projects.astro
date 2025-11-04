@@ -1,0 +1,37 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { getCollection } from "astro:content";
+import ProjectGrid from "../components/ProjectGrid.jsx";
+
+const projects = await getCollection("projects");
+const categorizedProjects = Object.entries(
+  projects.reduce((acc, project) => {
+    const category =
+      project.data.category ?? project.data.tags?.[0] ?? "Other";
+    const item = { ...project.data, slug: project.slug };
+    acc[category] = acc[category] ? [...acc[category], item] : [item];
+    return acc;
+  }, {}),
+).sort((a, b) => a[0].localeCompare(b[0]));
+---
+
+<BaseLayout
+  title="Projects – HiEN"
+  description="Catalog of open geospatial tools and experiments."
+>
+  <section class="surface surface--glow">
+    <div class="eyebrow">Projects</div>
+    <h1 class="section-title">All builds in one place</h1>
+  </section>
+
+  {
+    categorizedProjects.map(([category, items]) => (
+      <section class="surface" key={category}>
+        <h2 class="section-title" style={{ fontSize: "1.6rem" }}>
+          {category}
+        </h2>
+        <ProjectGrid projects={items} />
+      </section>
+    ))
+  }
+</BaseLayout>

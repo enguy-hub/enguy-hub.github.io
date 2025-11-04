@@ -1,0 +1,16 @@
+---
+title: "Sentinel-2 Mosaic Explorer"
+summary: "Draw an area of interest, fetch the least-cloudy Sentinel-2 scenes, and blend NDVI with true color for crop stress scouting."
+category: "Earth Observation"
+tags:
+  - geospatial
+  - sentinel-2
+  - leaflet
+liveUrl: "/demos/demo_s2_mosaic.html"
+status: "active"
+featured: true
+---
+
+This experiment wraps the Element84 STAC API and AWS public Sentinel-2 COGs into a browser-only tool.
+Use the drawing controls to define your AOI; the app pulls the latest least-cloudy scenes, builds an
+NDVI composite, and lets you export AOIs or NDVI time series for deeper analysis.

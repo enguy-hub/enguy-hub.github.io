@@ -1,0 +1,50 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getCollection } from 'astro:content';
+
+export async function getStaticPaths() {
+  const projects = await getCollection('projects');
+  return projects.map((project) => ({
+    params: { slug: project.slug },
+    props: { project }
+  }));
+}
+
+const { project } = Astro.props;
+const relatedPosts = project.data.relatedPosts ?? [];
+const { Content } = await project.render();
+---
+
+<BaseLayout
+  title={`${project.data.title} – Project Overview`}
+  description={project.data.summary}
+>
+  <article class="prose" style="font-size:1.05rem;">
+    <div class="eyebrow">Project</div>
+    <h1>{project.data.title}</h1>
+    <p style={{ fontSize: '1.05rem', color: 'var(--fg-muted)' }}>{project.data.summary}</p>
+
+    <div style="margin:1.5rem 0;display:flex;gap:0.5rem;flex-wrap:wrap;">
+      {project.data.tags.map((tag) => (
+        <span class="pill" key={tag}>
+          {tag}
+        </span>
+      ))}
+    </div>
+
+    <Content />
+
+    {relatedPosts.length > 0 && (
+      <section style="margin-top:3rem;">
+        <h2>Related blogs</h2>
+        <ul>
+          {relatedPosts.map((post) => (
+            <li key={post.slug}>
+              <a href={`/blogs/${post.slug}`}>{post.data.title}</a>
+            </li>
+          ))}
+        </ul>
+      </section>
+    )}
+  </article>
+</BaseLayout>

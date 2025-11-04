@@ -1,0 +1,36 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getCollection } from 'astro:content';
+
+export async function getStaticPaths() {
+  const papers = (await getCollection('papers')).filter((entry) => !entry.data.draft);
+  return papers.map((paper) => ({
+    params: { slug: paper.slug },
+    props: { paper }
+  }));
+}
+
+const { paper } = Astro.props;
+const { Content } = await paper.render();
+---
+
+<BaseLayout title={`${paper.data.title} – Research`} description={paper.data.summary}>
+  <article class="surface surface--glow prose" style="font-size:1.05rem;">
+    <div class="eyebrow">Research</div>
+    <h1>{paper.data.title}</h1>
+    <time dateTime={paper.data.publishedAt.toISOString()} style={{ color: 'var(--fg-muted)', fontSize: '0.9rem' }}>
+      {paper.data.publishedAt.toLocaleDateString()}
+    </time>
+    {paper.data.venue && (
+      <p style={{ marginTop: '0.6rem', color: 'var(--primary)', fontWeight: 600 }}>{paper.data.venue}</p>
+    )}
+    <Content />
+    {paper.data.link && (
+      <p style={{ marginTop: '1.6rem' }}>
+        <a href={paper.data.link} target="_blank" rel="noreferrer">
+          Read the publication ↗
+        </a>
+      </p>
+    )}
+  </article>
+</BaseLayout>
