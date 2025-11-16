@@ -34,6 +34,7 @@ const categorizedPapers = Object.entries(
         <div class="card-grid">
           {entries.map((paper) => {
             const href = paper.data.link ?? `/papers/${paper.slug}`;
+            const isExternal = href.startsWith("http");
             return (
               <article
                 class="surface"
@@ -46,6 +47,8 @@ const categorizedPapers = Object.entries(
               >
                 <a
                   href={href}
+                  target={isExternal ? "_blank" : undefined}
+                  rel={isExternal ? "noreferrer" : undefined}
                   style={{
                     fontSize: "1.22rem",
                     fontWeight: 600,
