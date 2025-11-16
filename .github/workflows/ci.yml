@@ -17,7 +17,10 @@ concurrency:
 
 jobs:
   test:
-    name: ${{ format('Check - {0} | {1}', github.event_name == 'pull_request' ? 'Pull Request' : 'Push', github.event_name == 'pull_request' && github.event.pull_request ? github.event.pull_request.title : github.event.head_commit && github.event.head_commit.message ? github.event.head_commit.message : github.ref_name) }}
+    name: >-
+      Check - ${{ github.event_name == 'pull_request' && 'Pull Request' || 'Push' }}
+      |
+      ${{ github.event_name == 'pull_request' && github.event.pull_request.title || github.event.head_commit && github.event.head_commit.message || github.ref_name }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
