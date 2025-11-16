@@ -1,4 +1,8 @@
 name: Lint & Build – Quality Checks
+run-name: >-
+  Check - ${{ github.event_name == 'pull_request' && 'Pull Request' || 'Push' }}
+  |
+  ${{ github.event_name == 'pull_request' && github.event.pull_request.title || github.event.head_commit && github.event.head_commit.message || github.ref_name }}
 
 on:
   push:
@@ -18,10 +22,7 @@ concurrency:
 
 jobs:
   test:
-    name: >-
-      Check - ${{ github.event_name == 'pull_request' && 'Pull Request' || 'Push' }}
-      |
-      ${{ github.event_name == 'pull_request' && github.event.pull_request.title || github.event.head_commit && github.event.head_commit.message || github.ref_name }}
+    name: Lint & Build – Quality Checks
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
