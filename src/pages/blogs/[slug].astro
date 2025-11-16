@@ -1,6 +1,7 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { getCollection } from 'astro:content';
+import { formatDate } from '../../utils/formatDate';
 
 export async function getStaticPaths() {
   const posts = (await getCollection('blogs')).filter((entry) => !entry.data.draft);
@@ -19,7 +20,7 @@ const { Content } = await post.render();
     <div class="eyebrow">Blog</div>
     <h1>{post.data.title}</h1>
     <time dateTime={post.data.publishedAt.toISOString()} style={{ color: 'var(--fg-muted)', fontSize: '0.9rem' }}>
-      {post.data.publishedAt.toLocaleDateString()}
+      {formatDate(post.data.publishedAt)}
     </time>
     <Content />
   </article>

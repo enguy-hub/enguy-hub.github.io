@@ -1,6 +1,7 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
 import { getCollection } from "astro:content";
+import { formatDate } from "../utils/formatDate";
 
 const papers = (await getCollection("papers"))
   .filter((entry) => !entry.data.draft)
@@ -57,7 +58,7 @@ const categorizedPapers = Object.entries(
                   dateTime={paper.data.publishedAt.toISOString()}
                   style={{ color: "var(--fg-muted)", fontSize: "0.88rem" }}
                 >
-                  {paper.data.publishedAt.toLocaleDateString()}
+                  {formatDate(paper.data.publishedAt)}
                 </time>
                 {paper.data.venue && (
                   <p style={{ margin: "0 0 0.4rem", color: "var(--primary)" }}>
